@@ -1,7 +1,4 @@
-// script.js - 全画面対応・GAS連携・完全版
-
-// 
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwATkMNs5G_V5qde_lG8ch8z3thTfjPvJA_sj5klz-NwHWkwvNMUNVkYnphx6EHpqX_/exec"; 
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwATkMNs5G_V5qde_lG8ch8z3thTfjPvJA_sj5klz-NwHWkwvNMUNVkYnphx6EHpqX_/exec"
 
 // --- 画像ファイル設定 ---
 const MAP_SRC = "./map.bmp";
@@ -27,7 +24,8 @@ let scaleFactor = 1; // 拡大縮小率
 let gameOffsetX = 0; // X方向の余白
 let gameOffsetY = 0; // Y方向の余白
 
-let player = { x: 100, y: 100, radius: 10, speed: 4, id: "" };
+// 初期座標はスタート時に上書きされますが、安全のため定義
+let player = { x: 542, y: 501, radius: 10, speed: 4, id: "" };
 let keys = {};
 let roomData = []; // CSVデータ格納用
 let logs = [];     // ログ格納用
@@ -166,37 +164,43 @@ function draw() {
     );
 
     if (isGameRunning) {
-        // プレイヤー描画 (元座標 -> 画面座標へ変換)
+        // --- プレイヤー描画 (人型アイコン) ---
+        // 元座標 -> 画面座標へ変換
         const sx = gameOffsetX + (player.x * scaleFactor);
         const sy = gameOffsetY + (player.y * scaleFactor);
         const sr = player.radius * scaleFactor;
 
-        ctx.beginPath();
-        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-        ctx.fillStyle = '#00f0ff';
-        ctx.fill();
+        // 人型の色設定
+        ctx.fillStyle = '#00f0ff'; // シアン色
         ctx.strokeStyle = 'white';
         ctx.lineWidth = 2;
+
+        // 頭部 (円)
+        ctx.beginPath();
+        // 頭の位置を少し上にずらす
+        ctx.arc(sx, sy - sr * 0.4, sr * 0.6, 0, Math.PI * 2);
+        ctx.fill();
         ctx.stroke();
 
-        // 名前表示
+        // 体 (半円/釣鐘型)
+        ctx.beginPath();
+        // 肩のライン
+        ctx.moveTo(sx - sr, sy + sr);
+        // 滑らかな曲線で肩を描く
+        ctx.quadraticCurveTo(sx, sy - sr * 0.5, sx + sr, sy + sr);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // 名前表示 (足元)
         ctx.fillStyle = "white";
         ctx.font = `${12 * scaleFactor}px Arial`;
         ctx.textAlign = "center";
-        ctx.fillText(player.id, sx, sy - sr - 5);
+        ctx.fillText(player.id, sx, sy + sr + 15);
 
-        // 未完了タスクがある場所を赤丸で表示（デバッグ・ナビ用）
-        roomData.forEach(room => {
-            const hasPending = room.tasks.some(t => t.status === 'pending');
-            if(hasPending) {
-                const rx = gameOffsetX + (room.x * scaleFactor);
-                const ry = gameOffsetY + (room.y * scaleFactor);
-                ctx.fillStyle = "rgba(255, 0, 0, 0.4)";
-                ctx.beginPath();
-                ctx.arc(rx, ry, room.radius * scaleFactor, 0, Math.PI*2);
-                ctx.fill();
-            }
-        });
+        // ★ 変更点: イベントの赤い丸を描画するコードを削除しました ★
+        // これによりマップ上には何も表示されませんが、
+        // 近づくと checkEvents() で感知してイベントが発生します。
     }
 }
 
@@ -210,8 +214,6 @@ function parseCSV(text) {
         const row = parseCSVLine(lines[i]);
         if(row.length < 5) continue;
 
-        // data.csvの列定義に合わせて読み込み
-        // 0:No, 1:管理No, 2:部屋名, 3:X, 4:Y, 5:Radius, 6:Order, 7:EvName, 8:Body, 9:Ch1, 10:Res1, 11:Time1...
         const roomName = row[2];
         const x = parseInt(row[3]);
         const y = parseInt(row[4]);
@@ -231,8 +233,6 @@ function parseCSV(text) {
             status: 'pending'
         };
 
-        // 選択肢の読み込み (4つまで対応)
-        // [Text, Result, Time] のセットが続く
         if(row[9]) task.choices.push({ text: row[9], result: row[10], time: row[11] });
         if(row[12]) task.choices.push({ text: row[12], result: row[13], time: row[14] });
         if(row[15]) task.choices.push({ text: row[15], result: row[16], time: row[17] });
@@ -243,7 +243,6 @@ function parseCSV(text) {
 }
 
 function parseCSVLine(line) {
-    // ダブルクォート考慮のCSVパース
     const res = [];
     let start = 0, inQ = false;
     for(let i=0; i<line.length; i++){
@@ -296,7 +295,7 @@ function triggerEvent(room, task) {
     holdBtn.textContent = '保留（後で対応する）';
     holdBtn.onclick = () => {
         eventPopup.style.display = 'none';
-        player.y += 20; // 少し離す
+        player.y += 20; // 戻る処理
     };
     choicesDiv.appendChild(holdBtn);
 
@@ -366,6 +365,10 @@ document.getElementById('btn-start').onclick = () => {
     isGameRunning = true;
     gameStartTime = Date.now();
     statusDiv.textContent = "移動: 矢印キー または WASD";
+
+    // ★ 変更点: 指定された座標からスタート ★
+    player.x = 542;
+    player.y = 501;
 };
 
 // --- 管理者機能 ---
