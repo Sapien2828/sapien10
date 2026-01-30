@@ -6,13 +6,13 @@
 <title>病院災害対応シミュレーション</title>
 <style>
     body {
-        background-color: #000; /* 余白は黒 */
+        background-color: #000;
         color: white;
         font-family: 'Segoe UI', 'Impact', sans-serif;
         margin: 0;
         height: 100vh;
         width: 100vw;
-        overflow: hidden; /* スクロールバーを完全消去 */
+        overflow: hidden;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -28,17 +28,43 @@
         align-items: center;
     }
 
-    /* キャンバス（JSでサイズ制御） */
     #map-canvas {
         background-color: #000;
         box-shadow: 0 0 20px rgba(0,0,0,0.8);
     }
 
-    /* --- UIレイヤー（ステータス表示など） --- */
+    /* --- UIレイヤー --- */
     #ui-layer {
-        position: absolute; top: 10px; left: 10px; 
-        pointer-events: none; /* クリックを透過 */
-        z-index: 1000;
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        pointer-events: none; z-index: 1000;
+    }
+
+    /* タイムゲージ（画面上部） */
+    #timer-container {
+        position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+        width: 80%; max-width: 600px;
+        background: rgba(0,0,0,0.6);
+        border: 2px solid #fff;
+        border-radius: 5px;
+        padding: 5px;
+        display: none; /* ゲーム開始まで非表示 */
+    }
+    #timer-bar-bg {
+        width: 100%; height: 20px; background: #333;
+        position: relative;
+    }
+    #timer-bar-fill {
+        width: 0%; height: 100%; background: #00ff00;
+        transition: width 0.5s, background-color 0.5s;
+    }
+    #timer-text {
+        text-align: center; color: white; font-weight: bold; margin-top: 5px;
+        text-shadow: 1px 1px 0 #000;
+    }
+
+    /* ステータス表示（左上） */
+    #status-area {
+        position: absolute; top: 80px; left: 20px;
         text-shadow: 1px 1px 2px black;
     }
     #status-message { font-size: 1.2em; font-weight: bold; color: yellow; }
@@ -71,7 +97,7 @@
     .dl-btn { font-size: 1em; padding: 10px 20px; background-color: #5bc0de; }
     .btn-exit { background-color: #555; }
 
-    /* --- オーバーレイ（ポップアップ・リザルト・管理画面共通） --- */
+    /* --- オーバーレイ --- */
     .overlay-screen {
         display: none; position: absolute; top: 0; left: 0; 
         width: 100%; height: 100%; background: rgba(0,0,0,0.85); 
@@ -85,7 +111,6 @@
         position: relative;
     }
 
-    /* 選択肢ボタン */
     .choice-btn {
         display: block; width: 100%; margin: 10px 0; padding: 12px;
         background: #444; color: white; border: 1px solid #777; cursor: pointer;
@@ -93,7 +118,6 @@
     }
     .choice-btn:hover { background: #555; }
 
-    /* テーブルデザイン */
     .table-container { max-height: 400px; overflow-y: auto; margin-top: 10px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
     th, td { border: 1px solid #555; padding: 5px; text-align: left; color: white; }
@@ -106,8 +130,17 @@
     <div id="game-wrapper">
         <canvas id="map-canvas"></canvas>
         <div id="ui-layer">
-            <div id="status-message">待機中...</div>
-            <div id="coord-display">X:0 Y:0</div>
+            <div id="timer-container">
+                <div id="timer-bar-bg">
+                    <div id="timer-bar-fill"></div>
+                </div>
+                <div id="timer-text">経過時間: 0 / 30 分</div>
+            </div>
+
+            <div id="status-area">
+                <div id="status-message">待機中...</div>
+                <div id="coord-display">X:0 Y:0</div>
+            </div>
         </div>
     </div>
 
