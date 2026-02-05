@@ -9,7 +9,8 @@
     body {
         background-color: #1a1a1a;
         color: white;
-        font-family: 'Segoe UI', 'Impact', sans-serif;
+        /* フォントをメイリオ優先に変更 */
+        font-family: 'Meiryo', 'Hiragino Kaku Gothic ProN', 'Segoe UI', sans-serif;
         margin: 0;
         height: 100vh;
         width: 100vw;
@@ -113,18 +114,20 @@
     #player-input-container { margin-bottom: 20px; text-align: center; }
     #player-id-input {
         padding: 10px; font-size: 1.2em; border-radius: 5px; border: none; text-align: center; width: 250px;
+        font-family: 'Meiryo', sans-serif; /* 入力欄もメイリオ */
     }
     .start-btn, .dl-btn {
         padding: 15px 40px; font-size: 1.5em; 
         background-color: #d9534f; color: white; border: none; border-radius: 50px;
         cursor: pointer; margin: 10px; transition: transform 0.2s;
+        font-family: 'Meiryo', sans-serif;
     }
     .start-btn:hover { transform: scale(1.05); background-color: #c9302c; }
     .dl-btn { font-size: 1em; padding: 10px 20px; background-color: #5bc0de; }
     .btn-exit { background-color: #555; }
     .btn-retry { background-color: #5cb85c; }
     .btn-finish { background-color: #333; border: 1px solid #777; }
-    .btn-path { background-color: #00cccc; } /* 軌跡DLボタン用 */
+    .btn-path { background-color: #00cccc; }
 
     /* --- オーバーレイ --- */
     .overlay-screen {
@@ -140,6 +143,7 @@
         display: block; width: 100%; margin: 10px 0; padding: 12px;
         background: #444; color: white; border: 1px solid #777; cursor: pointer;
         text-align: left; transition: background 0.2s;
+        font-family: 'Meiryo', sans-serif;
     }
     .choice-btn:hover { background: #555; }
 

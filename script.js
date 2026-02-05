@@ -1,4 +1,4 @@
-// script.js - 軌跡記録・30分強制終了・完全版
+// script.js - 文字化け対策・時間表示削除・完全版
 
 // ★指定のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwATkMNs5G_V5qde_lG8ch8z3thTfjPvJA_sj5klz-NwHWkwvNMUNVkYnphx6EHpqX_/exec";
@@ -45,7 +45,7 @@ let player = { x: 508, y: 500, radius: 10, speed: 4, id: "" };
 let keys = {};
 let roomData = [];
 let logs = []; // イベントログ
-let movementHistory = []; // 移動軌跡ログ {x, y, time}
+let movementHistory = []; // 移動軌跡ログ
 let isGameRunning = false;
 
 // 時間管理
@@ -121,7 +121,7 @@ function gameLoop() {
 function update() {
     if (!isGameRunning) return;
     if (eventPopup.style.display === 'flex') return;
-    if (resultScreen.style.display === 'flex') return; // リザルト中は停止
+    if (resultScreen.style.display === 'flex') return; 
 
     let dx = 0; let dy = 0;
     if (keys['ArrowUp'] || keys['w']) dy = -player.speed;
@@ -131,23 +131,22 @@ function update() {
 
     if (dx !== 0 && dy !== 0) { dx *= 0.71; dy *= 0.71; }
 
-    // ★移動処理 & 軌跡記録
+    // 移動処理 & 軌跡記録
     if (dx !== 0 || dy !== 0) {
         moveFrameCount++;
 
-        // 一定間隔(例えば10フレーム毎)に軌跡を保存
+        // 軌跡保存
         if (moveFrameCount % 10 === 0) {
             movementHistory.push({ x: Math.floor(player.x), y: Math.floor(player.y), time: accumulatedTime });
         }
 
         // 時間経過判定
         if (moveFrameCount >= MOVE_FRAMES_PER_MINUTE) {
-            addTime(1); // 1分加算
+            addTime(1); 
             moveFrameCount = 0;
             statusDiv.textContent = "移動により時間が経過しました (+1分)";
             setTimeout(() => { if(isGameRunning) statusDiv.textContent = ""; }, 2000);
             
-            // 30分チェック
             if(checkTimeLimit()) return; 
         }
     }
@@ -177,23 +176,20 @@ function draw() {
     ctx.drawImage(mapImage, gameOffsetX, gameOffsetY, mapImage.width * scaleFactor, mapImage.height * scaleFactor);
 
     if (isGameRunning) {
-        // ★軌跡の描画 (水色の線)
+        // 軌跡の描画
         if (movementHistory.length > 1) {
             ctx.beginPath();
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)'; // 水色、半透明
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
             ctx.lineWidth = 3;
-            // 履歴の最初の点へ移動
             const startX = gameOffsetX + (movementHistory[0].x * scaleFactor);
             const startY = gameOffsetY + (movementHistory[0].y * scaleFactor);
             ctx.moveTo(startX, startY);
 
-            // 線をつなぐ
             for (let i = 1; i < movementHistory.length; i++) {
                 const px = gameOffsetX + (movementHistory[i].x * scaleFactor);
                 const py = gameOffsetY + (movementHistory[i].y * scaleFactor);
                 ctx.lineTo(px, py);
             }
-            // 現在のプレイヤー位置までつなぐ
             ctx.lineTo(gameOffsetX + (player.x * scaleFactor), gameOffsetY + (player.y * scaleFactor));
             ctx.stroke();
         }
@@ -256,7 +252,6 @@ function addTime(minutes) {
 }
 
 function checkTimeLimit() {
-    // 30分以上になったら強制終了
     if (accumulatedTime >= MAX_TIME_LIMIT) {
         finishGame();
         return true;
@@ -269,7 +264,7 @@ function finishGame() {
     isGameRunning = false;
     eventPopup.style.display = 'none';
 
-    // ログ表示生成
+    // ログ表示
     resultLogBody.innerHTML = "";
     logs.forEach(log => {
         const tr = document.createElement('tr');
@@ -374,7 +369,8 @@ function triggerEvent(room, task) {
     task.choices.forEach(c => {
         const btn = document.createElement('button');
         btn.className = 'choice-btn';
-        btn.innerHTML = `${c.text} <span style="font-size:0.8em; color:#ccc;">(+${c.time}分)</span>`;
+        // ★修正: 時間経過のヒント (+X分) を削除
+        btn.innerHTML = c.text; 
         btn.onclick = () => resolveEvent(room, task, c);
         choicesDiv.appendChild(btn);
     });
@@ -413,10 +409,10 @@ function resolveEvent(room, task, choice) {
     sendToGAS(logEntry);
     addLog(room.name, task.name, choice.text, choice.result);
 
+    // ★修正: 時間経過表示を削除
     document.getElementById('event-desc').innerHTML = `
         <div style="color:#5bc0de; font-weight:bold; margin-bottom:10px;">選択結果</div>
-        ${choice.result}<br><br>
-        <span style="color:#f0ad4e;">経過時間: +${choice.time || 0}分 (計 ${accumulatedTime}分)</span>
+        ${choice.result}
     `;
     document.getElementById('event-choices').innerHTML = "";
     
@@ -425,7 +421,6 @@ function resolveEvent(room, task, choice) {
     closeBtn.textContent = "確認";
     closeBtn.onclick = () => {
         eventPopup.style.display = 'none';
-        // 確認ボタンを押した直後にも時間チェック
         if(checkTimeLimit()) return;
         statusDiv.textContent = `✅ ${task.name} 完了`;
     };
@@ -474,7 +469,7 @@ document.getElementById('btn-start').onclick = () => {
     
     player.x = 508;
     player.y = 500;
-    movementHistory = [{x:508, y:500, time:0}]; // 初期位置を履歴に追加
+    movementHistory = [{x:508, y:500, time:0}]; 
 };
 
 // --- 管理者・DL機能 ---
@@ -499,24 +494,32 @@ function renderAdminLogs() {
     });
 }
 window.clearAllLogs = () => { if(confirm("ログ削除？")) { logs=[]; renderAdminLogs(); }};
+
+// ★BOM付きでCSV出力 (文字化け対策)
 window.downloadAllLogs = () => {
-    let csv = "ID,日時,経過,場所,イベント,選択,結果\n" + logs.map(l => 
+    let csvContent = "ID,日時,経過,場所,イベント,選択,結果\n" + logs.map(l => 
         `${l.playerId},${l.timestamp},${l.elapsedTime},${l.location},${l.event},${l.choice},${l.result}`
     ).join("\n");
+    
+    // BOM付与
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, csvContent], { type: "text/csv" });
     const link = document.createElement("a");
-    link.href = "data:text/csv;charset=utf-8," + encodeURI(csv);
+    link.href = URL.createObjectURL(blob);
     link.download = "event_logs.csv";
     document.body.appendChild(link);
     link.click();
 };
 
-// ★移動軌跡のCSVダウンロード
 window.downloadPathLogs = () => {
-    let csv = "Time,X,Y\n" + movementHistory.map(m => 
+    let csvContent = "Time,X,Y\n" + movementHistory.map(m => 
         `${m.time},${m.x},${m.y}`
     ).join("\n");
+
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, csvContent], { type: "text/csv" });
     const link = document.createElement("a");
-    link.href = "data:text/csv;charset=utf-8," + encodeURI(csv);
+    link.href = URL.createObjectURL(blob);
     link.download = "path_logs.csv";
     document.body.appendChild(link);
     link.click();
