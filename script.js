@@ -1,4 +1,4 @@
-// script.js - 左右分割レイアウト・移動コスト・保留通過機能 実装版
+// script.js - 軌跡記録・30分強制終了・完全版
 
 // ★指定のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwATkMNs5G_V5qde_lG8ch8z3thTfjPvJA_sj5klz-NwHWkwvNMUNVkYnphx6EHpqX_/exec";
@@ -10,7 +10,7 @@ const CSV_SRC = "./data.csv";
 
 // --- 設定値 ---
 const MAX_TIME_LIMIT = 30; // 制限時間（分）
-const MOVE_FRAMES_PER_MINUTE = 120; // 何フレーム移動したら1分経過するか（60fpsなら約2秒移動で1分）
+const MOVE_FRAMES_PER_MINUTE = 120; // 移動による時間経過（60fps想定で約2秒移動=1分）
 
 // --- DOM要素 ---
 const gameArea = document.getElementById('game-area');
@@ -21,6 +21,9 @@ const debugCoords = document.getElementById('coord-display');
 const playerIdInput = document.getElementById('player-id-input');
 const eventPopup = document.getElementById('event-popup');
 const logSection = document.getElementById('log-section');
+const resultScreen = document.getElementById('result-screen');
+const resultLogBody = document.getElementById('result-log-body');
+const endScreen = document.getElementById('end-screen');
 
 // タイムゲージ
 const timerBarFill = document.getElementById('timer-bar-fill');
@@ -41,9 +44,9 @@ let gameOffsetY = 0;
 let player = { x: 508, y: 500, radius: 10, speed: 4, id: "" };
 let keys = {};
 let roomData = [];
-let logs = [];
+let logs = []; // イベントログ
+let movementHistory = []; // 移動軌跡ログ {x, y, time}
 let isGameRunning = false;
-let gameStartTime = 0;
 
 // 時間管理
 let accumulatedTime = 0; // 累積時間（分）
@@ -70,7 +73,6 @@ mapImage.onload = onImageLoad;
 collisionImage.onload = onImageLoad;
 
 // --- リサイズ処理 ---
-// 左側のエリア(game-area)に合わせてキャンバスサイズを調整
 function initGameSize() {
     const w = gameArea.clientWidth;
     const h = gameArea.clientHeight;
@@ -78,17 +80,14 @@ function initGameSize() {
     canvas.width = w;
     canvas.height = h;
 
-    // 当たり判定用は元画像サイズ
     collisionCanvas.width = mapImage.width;
     collisionCanvas.height = mapImage.height;
     collisionCtx.drawImage(collisionImage, 0, 0);
 
-    // 画面に収まるようにスケール計算 (Contain)
     const scaleW = w / mapImage.width;
     const scaleH = h / mapImage.height;
     scaleFactor = Math.min(scaleW, scaleH);
 
-    // 中央寄せオフセット
     gameOffsetX = (w - (mapImage.width * scaleFactor)) / 2;
     gameOffsetY = (h - (mapImage.height * scaleFactor)) / 2;
 }
@@ -98,7 +97,6 @@ window.addEventListener('resize', initGameSize);
 window.addEventListener('keydown', e => keys[e.key] = true);
 window.addEventListener('keyup', e => keys[e.key] = false);
 
-// マウス座標デバッグ
 canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -122,7 +120,8 @@ function gameLoop() {
 
 function update() {
     if (!isGameRunning) return;
-    if (eventPopup.style.display === 'flex') return; // イベント中は停止
+    if (eventPopup.style.display === 'flex') return;
+    if (resultScreen.style.display === 'flex') return; // リザルト中は停止
 
     let dx = 0; let dy = 0;
     if (keys['ArrowUp'] || keys['w']) dy = -player.speed;
@@ -130,52 +129,76 @@ function update() {
     if (keys['ArrowLeft'] || keys['a']) dx = -player.speed;
     if (keys['ArrowRight'] || keys['d']) dx = player.speed;
 
-    // 斜め移動補正
     if (dx !== 0 && dy !== 0) { dx *= 0.71; dy *= 0.71; }
 
-    // ★移動時の時間経過ギミック★
+    // ★移動処理 & 軌跡記録
     if (dx !== 0 || dy !== 0) {
         moveFrameCount++;
+
+        // 一定間隔(例えば10フレーム毎)に軌跡を保存
+        if (moveFrameCount % 10 === 0) {
+            movementHistory.push({ x: Math.floor(player.x), y: Math.floor(player.y), time: accumulatedTime });
+        }
+
+        // 時間経過判定
         if (moveFrameCount >= MOVE_FRAMES_PER_MINUTE) {
-            accumulatedTime += 1; // 1分経過
+            addTime(1); // 1分加算
             moveFrameCount = 0;
-            updateTimeGauge();
             statusDiv.textContent = "移動により時間が経過しました (+1分)";
             setTimeout(() => { if(isGameRunning) statusDiv.textContent = ""; }, 2000);
+            
+            // 30分チェック
+            if(checkTimeLimit()) return; 
         }
     }
 
     const nextX = player.x + dx;
     const nextY = player.y + dy;
 
-    // 衝突判定
     if (!checkCollision(nextX, player.y)) player.x = nextX;
     if (!checkCollision(player.x, nextY)) player.y = nextY;
 
-    // イベントチェック
     checkEvents();
 }
 
 function checkCollision(x, y) {
     if (x < 0 || x > mapImage.width || y < 0 || y > mapImage.height) return true;
     const p = collisionCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
-    // 黒(壁)判定
     if (p[0] < 50 && p[1] < 50 && p[2] < 50) return true;
     return false;
 }
 
 function draw() {
-    // 背景クリア
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     if (!mapImage.complete) return;
 
-    // マップ描画
     ctx.drawImage(mapImage, gameOffsetX, gameOffsetY, mapImage.width * scaleFactor, mapImage.height * scaleFactor);
 
     if (isGameRunning) {
-        // --- プレイヤー描画 (人型) ---
+        // ★軌跡の描画 (水色の線)
+        if (movementHistory.length > 1) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)'; // 水色、半透明
+            ctx.lineWidth = 3;
+            // 履歴の最初の点へ移動
+            const startX = gameOffsetX + (movementHistory[0].x * scaleFactor);
+            const startY = gameOffsetY + (movementHistory[0].y * scaleFactor);
+            ctx.moveTo(startX, startY);
+
+            // 線をつなぐ
+            for (let i = 1; i < movementHistory.length; i++) {
+                const px = gameOffsetX + (movementHistory[i].x * scaleFactor);
+                const py = gameOffsetY + (movementHistory[i].y * scaleFactor);
+                ctx.lineTo(px, py);
+            }
+            // 現在のプレイヤー位置までつなぐ
+            ctx.lineTo(gameOffsetX + (player.x * scaleFactor), gameOffsetY + (player.y * scaleFactor));
+            ctx.stroke();
+        }
+
+        // プレイヤー描画
         const sx = gameOffsetX + (player.x * scaleFactor);
         const sy = gameOffsetY + (player.y * scaleFactor);
         const sr = player.radius * scaleFactor;
@@ -183,33 +206,27 @@ function draw() {
         ctx.fillStyle = '#00f0ff';
         ctx.strokeStyle = 'white';
         ctx.lineWidth = 2;
-
-        // 頭
         ctx.beginPath();
         ctx.arc(sx, sy - sr * 0.4, sr * 0.6, 0, Math.PI * 2);
         ctx.fill(); ctx.stroke();
-        // 体
         ctx.beginPath();
         ctx.moveTo(sx - sr, sy + sr);
         ctx.quadraticCurveTo(sx, sy - sr * 0.5, sx + sr, sy + sr);
         ctx.closePath();
         ctx.fill(); ctx.stroke();
 
-        // 名前
         ctx.fillStyle = "white";
         ctx.font = `${12 * scaleFactor}px Arial`;
         ctx.textAlign = "center";
         ctx.fillText(player.id, sx, sy + sr + 15);
 
-        // --- ピン描画 ---
+        // ピン描画
         roomData.forEach(room => {
             if (room.isDiscovered) {
                 const allCompleted = room.tasks.every(t => t.status === 'completed');
                 const pinColor = allCompleted ? '#00ccff' : '#ff3333'; 
-                
                 const px = gameOffsetX + (room.x * scaleFactor);
                 const py = gameOffsetY + (room.y * scaleFactor);
-                
                 drawPin(px, py, pinColor, scaleFactor);
             }
         });
@@ -221,18 +238,52 @@ function drawPin(x, y, color, scale) {
     ctx.fillStyle = color;
     ctx.strokeStyle = 'white';
     ctx.lineWidth = 1;
-
     ctx.beginPath();
     ctx.moveTo(x, y); 
     ctx.lineTo(x - (size/2), y - size);
     ctx.lineTo(x + (size/2), y - size);
     ctx.closePath();
     ctx.fill(); ctx.stroke();
-
     ctx.beginPath();
     ctx.arc(x, y - size, size/2, 0, Math.PI*2);
     ctx.fill(); ctx.stroke();
 }
+
+// --- 時間・終了判定 ---
+function addTime(minutes) {
+    accumulatedTime += minutes;
+    updateTimeGauge();
+}
+
+function checkTimeLimit() {
+    // 30分以上になったら強制終了
+    if (accumulatedTime >= MAX_TIME_LIMIT) {
+        finishGame();
+        return true;
+    }
+    return false;
+}
+
+// ゲーム終了処理
+function finishGame() {
+    isGameRunning = false;
+    eventPopup.style.display = 'none';
+
+    // ログ表示生成
+    resultLogBody.innerHTML = "";
+    logs.forEach(log => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${log.elapsedTime}</td><td>${log.location}</td><td>${log.event}</td><td>${log.choice}</td><td>${log.result}</td>`;
+        resultLogBody.appendChild(tr);
+    });
+
+    resultScreen.style.display = 'flex';
+}
+
+window.showEndScreen = () => {
+    resultScreen.style.display = 'none';
+    endScreen.style.display = 'flex';
+};
 
 // --- CSVパース ---
 function parseCSV(text) {
@@ -253,7 +304,7 @@ function parseCSV(text) {
             room = { 
                 name: roomName, x: x, y: y, radius: r, tasks: [], 
                 isDiscovered: false,
-                ignoreUntilExit: false // ★「保留」時の通過用フラグ
+                ignoreUntilExit: false
             };
             roomData.push(room);
         }
@@ -298,13 +349,8 @@ function checkEvents() {
         const dist = Math.hypot(player.x - room.x, player.y - room.y);
 
         if (dist < room.radius) {
-            // エリア侵入で発見済み
             room.isDiscovered = true;
-
-            // ★「保留」フラグが立っている場合は、何もしない（通過可能）
-            if (room.ignoreUntilExit) {
-                continue; 
-            }
+            if (room.ignoreUntilExit) continue; 
 
             const pendingTask = room.tasks.find(t => t.status === 'pending');
             if (pendingTask) {
@@ -312,7 +358,6 @@ function checkEvents() {
                 break;
             }
         } else {
-            // ★エリア外に出たら「保留」フラグを解除（次に入ったらまたイベント発生）
             room.ignoreUntilExit = false;
         }
     }
@@ -334,18 +379,13 @@ function triggerEvent(room, task) {
         choicesDiv.appendChild(btn);
     });
 
-    // ★保留ボタン
     const holdBtn = document.createElement('button');
     holdBtn.className = 'choice-btn';
     holdBtn.style.backgroundColor = '#777';
     holdBtn.textContent = '保留（対応せず通過する）';
     holdBtn.onclick = () => {
-        // ★保留時の処理：
-        // 1. フラグを立てて、範囲外に出るまでイベントを無視する
         room.ignoreUntilExit = true;
-        // 2. ポップアップを閉じる
         eventPopup.style.display = 'none';
-        // 3. ログ記録（保留）
         addLog(room.name, task.name, "保留", "対応を後回しにした");
     };
     choicesDiv.appendChild(holdBtn);
@@ -357,11 +397,8 @@ function triggerEvent(room, task) {
 function resolveEvent(room, task, choice) {
     task.status = 'completed';
 
-    // 時間加算
-    accumulatedTime += (choice.time || 0);
-    updateTimeGauge();
+    addTime(choice.time || 0);
 
-    // ログ記録
     const now = new Date();
     const logEntry = {
         playerId: player.id,
@@ -374,11 +411,8 @@ function resolveEvent(room, task, choice) {
     };
     logs.push(logEntry);
     sendToGAS(logEntry);
-    
-    // 画面右側のログにも追加
     addLog(room.name, task.name, choice.text, choice.result);
 
-    // 結果表示
     document.getElementById('event-desc').innerHTML = `
         <div style="color:#5bc0de; font-weight:bold; margin-bottom:10px;">選択結果</div>
         ${choice.result}<br><br>
@@ -391,16 +425,12 @@ function resolveEvent(room, task, choice) {
     closeBtn.textContent = "確認";
     closeBtn.onclick = () => {
         eventPopup.style.display = 'none';
+        // 確認ボタンを押した直後にも時間チェック
+        if(checkTimeLimit()) return;
         statusDiv.textContent = `✅ ${task.name} 完了`;
-        
-        if(accumulatedTime >= MAX_TIME_LIMIT) {
-            statusDiv.textContent = "⚠️ 制限時間を超過しました！";
-            statusDiv.style.color = "red";
-        }
     };
 }
 
-// 簡易ログ表示
 function addLog(location, event, choice, result) {
     const div = document.createElement('div');
     div.className = 'log-item';
@@ -409,7 +439,7 @@ function addLog(location, event, choice, result) {
         <span class="log-event">${location}</span><br>
         選択: ${choice}
     `;
-    logSection.prepend(div); // 新しい順
+    logSection.prepend(div);
 }
 
 function updateTimeGauge() {
@@ -426,7 +456,6 @@ function updateTimeGauge() {
 
 // --- GAS連携 ---
 function sendToGAS(data) {
-    // CORSモードはno-cors
     fetch(GAS_URL, {
         method: 'POST',
         mode: 'no-cors',
@@ -445,9 +474,10 @@ document.getElementById('btn-start').onclick = () => {
     
     player.x = 508;
     player.y = 500;
+    movementHistory = [{x:508, y:500, time:0}]; // 初期位置を履歴に追加
 };
 
-// --- 管理者機能 ---
+// --- 管理者・DL機能 ---
 window.openAdminLogin = () => { document.getElementById('admin-login-overlay').style.display = 'flex'; };
 window.closeAdminLogin = () => { document.getElementById('admin-login-overlay').style.display = 'none'; };
 window.checkAdminPass = () => {
@@ -475,7 +505,19 @@ window.downloadAllLogs = () => {
     ).join("\n");
     const link = document.createElement("a");
     link.href = "data:text/csv;charset=utf-8," + encodeURI(csv);
-    link.download = "logs.csv";
+    link.download = "event_logs.csv";
+    document.body.appendChild(link);
+    link.click();
+};
+
+// ★移動軌跡のCSVダウンロード
+window.downloadPathLogs = () => {
+    let csv = "Time,X,Y\n" + movementHistory.map(m => 
+        `${m.time},${m.x},${m.y}`
+    ).join("\n");
+    const link = document.createElement("a");
+    link.href = "data:text/csv;charset=utf-8," + encodeURI(csv);
+    link.download = "path_logs.csv";
     document.body.appendChild(link);
     link.click();
 };

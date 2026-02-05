@@ -24,12 +24,12 @@
         display: flex;
         width: 100%;
         height: 100%;
-        max-width: 1600px; /* PC向け最大幅 */
+        max-width: 1600px;
     }
 
     /* 左側：ゲーム画面（マップ） */
     #game-area {
-        flex: 3; /* 画面の約75% */
+        flex: 3;
         position: relative;
         background-color: #000;
         overflow: hidden;
@@ -38,12 +38,11 @@
 
     canvas {
         display: block;
-        /* CanvasサイズはJSで制御 */
     }
 
     /* 右側：情報パネル */
     #info-panel {
-        flex: 1; /* 画面の約25% */
+        flex: 1;
         background-color: #222;
         display: flex;
         flex-direction: column;
@@ -85,7 +84,7 @@
         font-size: 0.9em; color: #aaa; margin-top: 5px; text-align: right;
     }
 
-    /* ログ履歴（簡易表示） */
+    /* ログ履歴 */
     #log-section {
         flex-grow: 1;
         background: #000;
@@ -100,7 +99,7 @@
     .log-event { color: #5bc0de; }
     .log-result { color: #ccc; margin-left: 10px; }
 
-    /* --- トップ画面オーバーレイ --- */
+    /* --- トップ画面 --- */
     #top-screen {
         position: absolute; top: 0; left: 0; width: 100%; height: 100%;
         background: linear-gradient(to bottom, #111, #333);
@@ -123,11 +122,14 @@
     .start-btn:hover { transform: scale(1.05); background-color: #c9302c; }
     .dl-btn { font-size: 1em; padding: 10px 20px; background-color: #5bc0de; }
     .btn-exit { background-color: #555; }
+    .btn-retry { background-color: #5cb85c; }
+    .btn-finish { background-color: #333; border: 1px solid #777; }
+    .btn-path { background-color: #00cccc; } /* 軌跡DLボタン用 */
 
-    /* --- ポップアップ共通 --- */
+    /* --- オーバーレイ --- */
     .overlay-screen {
         display: none; position: absolute; top: 0; left: 0; 
-        width: 100%; height: 100%; background: rgba(0,0,0,0.85); 
+        width: 100%; height: 100%; background: rgba(0,0,0,0.9); 
         z-index: 2000; align-items: center; justify-content: center;
     }
     .popup-content, .login-box {
@@ -141,12 +143,20 @@
     }
     .choice-btn:hover { background: #555; }
 
-    /* 管理者画面 */
-    #admin-screen .popup-content { max-width: 900px; }
+    /* テーブル */
     .table-container { max-height: 400px; overflow-y: auto; margin-top: 10px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
     th, td { border: 1px solid #555; padding: 5px; text-align: left; color: white; }
     th { background-color: #444; position: sticky; top: 0; }
+
+    /* リザルト画面 */
+    #result-content { max-width: 800px; }
+    
+    /* 終了画面 */
+    #end-screen {
+        display: none; flex-direction: column; align-items: center; justify-content: center;
+        width: 100%; height: 100%; background: #000; z-index: 4000; position: absolute; top: 0; left: 0;
+    }
 
 </style>
 </head>
@@ -155,7 +165,7 @@
     <div id="main-container">
         <div id="game-area">
             <canvas id="map-canvas"></canvas>
-            </div>
+        </div>
 
         <div id="info-panel">
             <div id="timer-section">
@@ -172,8 +182,7 @@
             </div>
 
             <div style="font-weight:bold; margin-bottom:5px;">行動ログ</div>
-            <div id="log-section">
-                </div>
+            <div id="log-section"></div>
             
             <div style="margin-top:20px; text-align:center;">
                  <button class="dl-btn btn-exit" onclick="openAdminLogin()">管理者メニュー</button>
@@ -198,6 +207,30 @@
         </div>
     </div>
 
+    <div id="result-screen" class="overlay-screen">
+        <div class="popup-content" id="result-content">
+            <div style="font-size:1.5em; color:#5bc0de; margin-bottom:10px;">訓練終了（制限時間到達）</div>
+            <p>30分が経過しました。<br>以下のログが記録されました。</p>
+            <div class="table-container">
+                <table id="result-table">
+                    <thead><tr><th>時間</th><th>場所</th><th>イベント</th><th>選択</th><th>結果</th></tr></thead>
+                    <tbody id="result-log-body"></tbody>
+                </table>
+            </div>
+            <div class="button-area" style="margin-top:20px;">
+                <button class="dl-btn" onclick="downloadAllLogs()">ログCSV保存</button>
+                <button class="dl-btn btn-path" onclick="downloadPathLogs()">軌跡CSV保存</button>
+                <button class="dl-btn btn-retry" onclick="location.reload()">最初から</button>
+                <button class="dl-btn btn-finish" onclick="showEndScreen()">終了する</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="end-screen">
+        <h1 style="color:white;">お疲れ様でした。</h1>
+        <p style="color:#aaa;">ブラウザを閉じて終了してください。</p>
+    </div>
+
     <div id="admin-login-overlay" class="overlay-screen">
         <div class="login-box">
             <h2>管理者ログイン</h2>
@@ -209,7 +242,7 @@
     </div>
 
     <div id="admin-screen" class="overlay-screen">
-        <div class="popup-content">
+        <div class="popup-content" style="max-width:900px;">
             <h2>全ログ閲覧</h2>
             <div class="table-container">
                 <table id="admin-table">
@@ -219,6 +252,7 @@
             </div>
             <div style="margin-top:20px;">
                 <button class="dl-btn" onclick="downloadAllLogs()">CSV保存</button>
+                <button class="dl-btn btn-path" onclick="downloadPathLogs()">軌跡CSV保存</button>
                 <button class="dl-btn btn-exit" onclick="clearAllLogs()">ログ削除</button>
                 <button class="dl-btn btn-exit" onclick="closeAdminScreen()">戻る</button>
             </div>
