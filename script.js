@@ -1,4 +1,4 @@
-// script.js - 文字化け対策・時間表示削除・完全版
+// script.js - 保留ログ記録修正版・完全統合
 
 // ★指定のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwATkMNs5G_V5qde_lG8ch8z3thTfjPvJA_sj5klz-NwHWkwvNMUNVkYnphx6EHpqX_/exec";
@@ -10,7 +10,7 @@ const CSV_SRC = "./data.csv";
 
 // --- 設定値 ---
 const MAX_TIME_LIMIT = 30; // 制限時間（分）
-const MOVE_FRAMES_PER_MINUTE = 120; // 移動による時間経過（60fps想定で約2秒移動=1分）
+const MOVE_FRAMES_PER_MINUTE = 120; // 移動による時間経過
 
 // --- DOM要素 ---
 const gameArea = document.getElementById('game-area');
@@ -40,7 +40,7 @@ let scaleFactor = 1;
 let gameOffsetX = 0;
 let gameOffsetY = 0;
 
-// プレイヤー (初期位置 508, 500)
+// プレイヤー
 let player = { x: 508, y: 500, radius: 10, speed: 4, id: "" };
 let keys = {};
 let roomData = [];
@@ -369,7 +369,6 @@ function triggerEvent(room, task) {
     task.choices.forEach(c => {
         const btn = document.createElement('button');
         btn.className = 'choice-btn';
-        // ★修正: 時間経過のヒント (+X分) を削除
         btn.innerHTML = c.text; 
         btn.onclick = () => resolveEvent(room, task, c);
         choicesDiv.appendChild(btn);
@@ -382,6 +381,20 @@ function triggerEvent(room, task) {
     holdBtn.onclick = () => {
         room.ignoreUntilExit = true;
         eventPopup.style.display = 'none';
+
+        // ★修正: 保留時もログ配列に追加＆GAS送信
+        const now = new Date();
+        const logEntry = {
+            playerId: player.id,
+            timestamp: now.toLocaleString(),
+            elapsedTime: accumulatedTime + "分",
+            location: room.name,
+            event: task.name,
+            choice: "保留",
+            result: "対応を後回しにした"
+        };
+        logs.push(logEntry);
+        sendToGAS(logEntry);
         addLog(room.name, task.name, "保留", "対応を後回しにした");
     };
     choicesDiv.appendChild(holdBtn);
@@ -409,7 +422,6 @@ function resolveEvent(room, task, choice) {
     sendToGAS(logEntry);
     addLog(room.name, task.name, choice.text, choice.result);
 
-    // ★修正: 時間経過表示を削除
     document.getElementById('event-desc').innerHTML = `
         <div style="color:#5bc0de; font-weight:bold; margin-bottom:10px;">選択結果</div>
         ${choice.result}
@@ -495,13 +507,12 @@ function renderAdminLogs() {
 }
 window.clearAllLogs = () => { if(confirm("ログ削除？")) { logs=[]; renderAdminLogs(); }};
 
-// ★BOM付きでCSV出力 (文字化け対策)
+// ★BOM付きでCSV出力
 window.downloadAllLogs = () => {
     let csvContent = "ID,日時,経過,場所,イベント,選択,結果\n" + logs.map(l => 
         `${l.playerId},${l.timestamp},${l.elapsedTime},${l.location},${l.event},${l.choice},${l.result}`
     ).join("\n");
     
-    // BOM付与
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: "text/csv" });
     const link = document.createElement("a");
