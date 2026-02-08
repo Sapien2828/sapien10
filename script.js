@@ -1,4 +1,4 @@
-// script.js - 保留ログ記録修正版・完全統合
+// script.js - 循環ロジック・選択肢4スキップ・完全統合
 
 // ★指定のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwATkMNs5G_V5qde_lG8ch8z3thTfjPvJA_sj5klz-NwHWkwvNMUNVkYnphx6EHpqX_/exec";
@@ -131,22 +131,17 @@ function update() {
 
     if (dx !== 0 && dy !== 0) { dx *= 0.71; dy *= 0.71; }
 
-    // 移動処理 & 軌跡記録
+    // 移動処理
     if (dx !== 0 || dy !== 0) {
         moveFrameCount++;
-
-        // 軌跡保存
         if (moveFrameCount % 10 === 0) {
             movementHistory.push({ x: Math.floor(player.x), y: Math.floor(player.y), time: accumulatedTime });
         }
-
-        // 時間経過判定
         if (moveFrameCount >= MOVE_FRAMES_PER_MINUTE) {
             addTime(1); 
             moveFrameCount = 0;
             statusDiv.textContent = "移動により時間が経過しました (+1分)";
             setTimeout(() => { if(isGameRunning) statusDiv.textContent = ""; }, 2000);
-            
             if(checkTimeLimit()) return; 
         }
     }
@@ -176,7 +171,7 @@ function draw() {
     ctx.drawImage(mapImage, gameOffsetX, gameOffsetY, mapImage.width * scaleFactor, mapImage.height * scaleFactor);
 
     if (isGameRunning) {
-        // 軌跡の描画
+        // 軌跡
         if (movementHistory.length > 1) {
             ctx.beginPath();
             ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
@@ -184,7 +179,6 @@ function draw() {
             const startX = gameOffsetX + (movementHistory[0].x * scaleFactor);
             const startY = gameOffsetY + (movementHistory[0].y * scaleFactor);
             ctx.moveTo(startX, startY);
-
             for (let i = 1; i < movementHistory.length; i++) {
                 const px = gameOffsetX + (movementHistory[i].x * scaleFactor);
                 const py = gameOffsetY + (movementHistory[i].y * scaleFactor);
@@ -194,29 +188,19 @@ function draw() {
             ctx.stroke();
         }
 
-        // プレイヤー描画
+        // プレイヤー
         const sx = gameOffsetX + (player.x * scaleFactor);
         const sy = gameOffsetY + (player.y * scaleFactor);
         const sr = player.radius * scaleFactor;
-
         ctx.fillStyle = '#00f0ff';
         ctx.strokeStyle = 'white';
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(sx, sy - sr * 0.4, sr * 0.6, 0, Math.PI * 2);
-        ctx.fill(); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(sx - sr, sy + sr);
-        ctx.quadraticCurveTo(sx, sy - sr * 0.5, sx + sr, sy + sr);
-        ctx.closePath();
-        ctx.fill(); ctx.stroke();
-
-        ctx.fillStyle = "white";
-        ctx.font = `${12 * scaleFactor}px Arial`;
-        ctx.textAlign = "center";
+        ctx.beginPath(); ctx.arc(sx, sy - sr * 0.4, sr * 0.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sx - sr, sy + sr); ctx.quadraticCurveTo(sx, sy - sr * 0.5, sx + sr, sy + sr); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "white"; ctx.font = `${12 * scaleFactor}px Arial`; ctx.textAlign = "center";
         ctx.fillText(player.id, sx, sy + sr + 15);
 
-        // ピン描画
+        // ピン（全完了=青、未完了=赤）
         roomData.forEach(room => {
             if (room.isDiscovered) {
                 const allCompleted = room.tasks.every(t => t.status === 'completed');
@@ -231,18 +215,9 @@ function draw() {
 
 function drawPin(x, y, color, scale) {
     const size = 15 * scale;
-    ctx.fillStyle = color;
-    ctx.strokeStyle = 'white';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x, y); 
-    ctx.lineTo(x - (size/2), y - size);
-    ctx.lineTo(x + (size/2), y - size);
-    ctx.closePath();
-    ctx.fill(); ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(x, y - size, size/2, 0, Math.PI*2);
-    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = color; ctx.strokeStyle = 'white'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - (size/2), y - size); ctx.lineTo(x + (size/2), y - size); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y - size, size/2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
 }
 
 // --- 時間・終了判定 ---
@@ -259,19 +234,15 @@ function checkTimeLimit() {
     return false;
 }
 
-// ゲーム終了処理
 function finishGame() {
     isGameRunning = false;
     eventPopup.style.display = 'none';
-
-    // ログ表示
     resultLogBody.innerHTML = "";
     logs.forEach(log => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${log.elapsedTime}</td><td>${log.location}</td><td>${log.event}</td><td>${log.choice}</td><td>${log.result}</td>`;
         resultLogBody.appendChild(tr);
     });
-
     resultScreen.style.display = 'flex';
 }
 
@@ -280,7 +251,7 @@ window.showEndScreen = () => {
     endScreen.style.display = 'flex';
 };
 
-// --- CSVパース ---
+// --- CSVパース（順序ソート付き） ---
 function parseCSV(text) {
     const lines = text.trim().split('\n');
     roomData = [];
@@ -293,13 +264,15 @@ function parseCSV(text) {
         const x = parseInt(row[3]);
         const y = parseInt(row[4]);
         const r = parseInt(row[5]);
+        const order = parseInt(row[6]); // イベント順序
 
         let room = roomData.find(d => d.name === roomName && Math.abs(d.x - x) < 5 && Math.abs(d.y - y) < 5);
         if(!room) {
             room = { 
                 name: roomName, x: x, y: y, radius: r, tasks: [], 
                 isDiscovered: false,
-                ignoreUntilExit: false
+                ignoreUntilExit: false,
+                currentTaskIndex: 0 // 現在のタスクポインタ
             };
             roomData.push(room);
         }
@@ -308,6 +281,7 @@ function parseCSV(text) {
             id: row[0],
             name: row[7],
             description: row[8],
+            order: order, // ソート用
             choices: [],
             status: 'pending'
         };
@@ -319,6 +293,11 @@ function parseCSV(text) {
 
         room.tasks.push(task);
     }
+
+    // ★部屋ごとにタスクを順序(order)で昇順ソート
+    roomData.forEach(room => {
+        room.tasks.sort((a, b) => a.order - b.order);
+    });
 }
 
 function parseCSVLine(line) {
@@ -335,7 +314,7 @@ function parseCSVLine(line) {
     return res;
 }
 
-// --- イベント制御 ---
+// --- イベント制御（ループ対応） ---
 function checkEvents() {
     if(eventPopup.style.display === 'flex') return;
 
@@ -347,9 +326,33 @@ function checkEvents() {
             room.isDiscovered = true;
             if (room.ignoreUntilExit) continue; 
 
-            const pendingTask = room.tasks.find(t => t.status === 'pending');
-            if (pendingTask) {
-                triggerEvent(room, pendingTask);
+            // ★循環ロジック
+            // 全タスクが完了済みかチェック
+            const pendingCount = room.tasks.filter(t => t.status === 'pending').length;
+            if(pendingCount === 0) continue; // すべて完了なら何もしない
+
+            // 現在のポインタから順にチェックし、最初に見つかったpendingタスクを表示
+            // ポインタが範囲外なら0に戻す
+            if(room.currentTaskIndex >= room.tasks.length) {
+                room.currentTaskIndex = 0;
+            }
+            
+            // 現在地からループして探す
+            let foundTask = null;
+            let startIndex = room.currentTaskIndex;
+            let count = 0;
+            while(count < room.tasks.length) {
+                let idx = (startIndex + count) % room.tasks.length;
+                if(room.tasks[idx].status === 'pending') {
+                    room.currentTaskIndex = idx; // ポインタ更新
+                    foundTask = room.tasks[idx];
+                    break;
+                }
+                count++;
+            }
+
+            if (foundTask) {
+                triggerEvent(room, foundTask);
                 break;
             }
         } else {
@@ -366,14 +369,16 @@ function triggerEvent(room, task) {
     const choicesDiv = document.getElementById('event-choices');
     choicesDiv.innerHTML = "";
 
-    task.choices.forEach(c => {
+    // 選択肢生成 (0, 1, 2, 3...)
+    task.choices.forEach((c, index) => {
         const btn = document.createElement('button');
         btn.className = 'choice-btn';
         btn.innerHTML = c.text; 
-        btn.onclick = () => resolveEvent(room, task, c);
+        btn.onclick = () => resolveEvent(room, task, c, index); // indexを渡す
         choicesDiv.appendChild(btn);
     });
 
+    // グローバル保留ボタン
     const holdBtn = document.createElement('button');
     holdBtn.className = 'choice-btn';
     holdBtn.style.backgroundColor = '#777';
@@ -381,21 +386,7 @@ function triggerEvent(room, task) {
     holdBtn.onclick = () => {
         room.ignoreUntilExit = true;
         eventPopup.style.display = 'none';
-
-        // ★修正: 保留時もログ配列に追加＆GAS送信
-        const now = new Date();
-        const logEntry = {
-            playerId: player.id,
-            timestamp: now.toLocaleString(),
-            elapsedTime: accumulatedTime + "分",
-            location: room.name,
-            event: task.name,
-            choice: "保留",
-            result: "対応を後回しにした"
-        };
-        logs.push(logEntry);
-        sendToGAS(logEntry);
-        addLog(room.name, task.name, "保留", "対応を後回しにした");
+        recordLog(room, task, "保留", "対応を後回しにした");
     };
     choicesDiv.appendChild(holdBtn);
 
@@ -403,24 +394,16 @@ function triggerEvent(room, task) {
     eventPopup.style.display = 'flex';
 }
 
-function resolveEvent(room, task, choice) {
-    task.status = 'completed';
+function resolveEvent(room, task, choice, choiceIndex) {
+    // ★重要: 選択肢4 (index=3) が選ばれた場合は完了にしない
+    if(choiceIndex === 3) {
+        task.status = 'pending'; // 保留のまま
+    } else {
+        task.status = 'completed'; // 完了にする
+    }
 
     addTime(choice.time || 0);
-
-    const now = new Date();
-    const logEntry = {
-        playerId: player.id,
-        timestamp: now.toLocaleString(),
-        elapsedTime: accumulatedTime + "分",
-        location: room.name,
-        event: task.name,
-        choice: choice.text,
-        result: choice.result
-    };
-    logs.push(logEntry);
-    sendToGAS(logEntry);
-    addLog(room.name, task.name, choice.text, choice.result);
+    recordLog(room, task, choice.text, choice.result);
 
     document.getElementById('event-desc').innerHTML = `
         <div style="color:#5bc0de; font-weight:bold; margin-bottom:10px;">選択結果</div>
@@ -434,11 +417,36 @@ function resolveEvent(room, task, choice) {
     closeBtn.onclick = () => {
         eventPopup.style.display = 'none';
         if(checkTimeLimit()) return;
-        statusDiv.textContent = `✅ ${task.name} 完了`;
+        
+        // ★重要: 確認ボタンを押したら、次のタスクへポインタを進める
+        room.currentTaskIndex++;
+        // ここでインデックスが配列長を超えても、次回のcheckEventsで補正されるのでOK
+        
+        if(task.status === 'completed') {
+            statusDiv.textContent = `✅ ${task.name} 完了`;
+        } else {
+            statusDiv.textContent = `⏭️ ${task.name} 次へ`;
+        }
     };
 }
 
-function addLog(location, event, choice, result) {
+function recordLog(room, task, choiceText, resultText) {
+    const now = new Date();
+    const logEntry = {
+        playerId: player.id,
+        timestamp: now.toLocaleString(),
+        elapsedTime: accumulatedTime + "分",
+        location: room.name,
+        event: task.name,
+        choice: choiceText,
+        result: resultText
+    };
+    logs.push(logEntry);
+    sendToGAS(logEntry);
+    addLogToScreen(room.name, task.name, choiceText);
+}
+
+function addLogToScreen(location, event, choice) {
     const div = document.createElement('div');
     div.className = 'log-item';
     div.innerHTML = `
@@ -507,12 +515,10 @@ function renderAdminLogs() {
 }
 window.clearAllLogs = () => { if(confirm("ログ削除？")) { logs=[]; renderAdminLogs(); }};
 
-// ★BOM付きでCSV出力
 window.downloadAllLogs = () => {
     let csvContent = "ID,日時,経過,場所,イベント,選択,結果\n" + logs.map(l => 
         `${l.playerId},${l.timestamp},${l.elapsedTime},${l.location},${l.event},${l.choice},${l.result}`
     ).join("\n");
-    
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: "text/csv" });
     const link = document.createElement("a");
@@ -526,7 +532,6 @@ window.downloadPathLogs = () => {
     let csvContent = "Time,X,Y\n" + movementHistory.map(m => 
         `${m.time},${m.x},${m.y}`
     ).join("\n");
-
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: "text/csv" });
     const link = document.createElement("a");
