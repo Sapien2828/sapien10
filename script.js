@@ -1,7 +1,7 @@
 // script.js - 循環ロジック・選択肢4スキップ・完全統合
 
 // ★指定のGAS URL
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwATkMNs5G_V5qde_lG8ch8z3thTfjPvJA_sj5klz-NwHWkwvNMUNVkYnphx6EHpqX_/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbx8Oxc4dVAK1v5crQjBGEH6zbpg3m7hZFKxx7tn9ERKfHN4bYyDSY_Y5yXuGf1cEc1L/exec";
 
 // --- 画像・データファイル ---
 const MAP_SRC = "./map.bmp";
