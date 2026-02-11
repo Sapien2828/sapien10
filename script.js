@@ -1,4 +1,4 @@
-// script.js - 決断時間計測・リアル日時記録・完全版
+// script.js - 軌跡リアル日時記録・空シート対応版・完全版
 
 // ★指定された最新のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx8Oxc4dVAK1v5crQjBGEH6zbpg3m7hZFKxx7tn9ERKfHN4bYyDSY_Y5yXuGf1cEc1L/exec";
@@ -9,10 +9,10 @@ const COLLISION_SRC = "./map_collision.bmp";
 const CSV_SRC = "./data.csv";
 
 // --- 設定値 ---
-const MAX_TIME_LIMIT = 30; 
-const MOVE_FRAMES_PER_MINUTE = 120; 
+const MAX_TIME_LIMIT = 30; // 制限時間（分）
+const MOVE_FRAMES_PER_MINUTE = 120; // 移動による時間経過（60fps想定で約2秒移動=1分）
 
-// --- DOM要素 ---
+// --- DOM要素の取得 ---
 const gameArea = document.getElementById('game-area');
 const canvas = document.getElementById('map-canvas');
 const ctx = canvas.getContext('2d');
@@ -50,9 +50,7 @@ let accumulatedTime = 0;
 let moveFrameCount = 0;
 let sessionUUID = "";
 let sessionStartTime = "";
-
-// ★追加: 決断時間計測用
-let eventOpenTime = 0; // ポップアップが開いた瞬間のリアルタイム
+let eventOpenTime = 0; // 決断時間計測用
 
 // --- 初期化 ---
 mapImage.src = MAP_SRC;
@@ -129,7 +127,12 @@ function update() {
         moveFrameCount++;
         // 軌跡記録 (10フレーム毎 = 滑らか)
         if (moveFrameCount % 10 === 0) {
-            movementHistory.push({ x: Math.floor(player.x), y: Math.floor(player.y), time: accumulatedTime });
+            movementHistory.push({ 
+                x: Math.floor(player.x), 
+                y: Math.floor(player.y), 
+                time: accumulatedTime,
+                realTime: new Date().toLocaleString() // ★追加: リアル日時
+            });
         }
         if (moveFrameCount >= MOVE_FRAMES_PER_MINUTE) {
             addTime(1); 
@@ -238,21 +241,16 @@ function finishGame() {
     resultLogBody.innerHTML = "";
     logs.forEach(log => {
         const tr = document.createElement('tr');
-        // 結果画面にも日時と決断時間を表示
         tr.innerHTML = `<td>${log.elapsedTime}</td><td>${log.timestamp}</td><td>${log.decisionTime}秒</td><td>${log.location}</td><td>${log.event}</td><td>${log.choice}</td><td>${log.result}</td>`;
         resultLogBody.appendChild(tr);
     });
 
-    // リザルトテーブルヘッダー更新用にID取得（簡易的）
     const ths = document.getElementById('result-table').querySelectorAll('th');
     if(ths.length < 7) {
-       // 時間, 場所, イベント... となっているので、項目を増やす必要があるが、
-       // HTML構造を変えずにJSで差し込む
        const headerRow = document.querySelector('#result-table thead tr');
        headerRow.innerHTML = `<th>シミュ経過</th><th>リアル日時</th><th>決断秒数</th><th>場所</th><th>イベント</th><th>選択</th><th>結果</th>`;
     }
 
-    // 手動送信ボタン
     const btnArea = resultScreen.querySelector('.button-area');
     const oldBtn = document.getElementById('btn-manual-send');
     if(oldBtn) oldBtn.remove();
@@ -347,7 +345,7 @@ function triggerEvent(room, task) {
     document.getElementById('event-title').textContent = `場所: ${room.name}`;
     document.getElementById('event-desc').innerHTML = `<strong>${task.name}</strong><br>${task.description}`;
     
-    // ★追加: イベントが開かれた時間を記録
+    // イベント表示開始時間を記録
     eventOpenTime = Date.now();
 
     const choicesDiv = document.getElementById('event-choices');
@@ -393,9 +391,7 @@ function resolveEvent(room, task, choice, choiceIndex) {
 // ログ記録
 function recordLog(room, task, choiceText, resultText) {
     const now = new Date();
-    
-    // ★追加: 決断にかかった時間を計算（秒単位）
-    // イベントが開かれた時間が0の場合は0とする
+    // 決断時間計算
     let duration = 0;
     if (eventOpenTime > 0) {
         duration = Math.floor((Date.now() - eventOpenTime) / 1000);
@@ -408,7 +404,7 @@ function recordLog(room, task, choiceText, resultText) {
         startTime: sessionStartTime,
         timestamp: now.toLocaleString(),
         elapsedTime: accumulatedTime + "分",
-        decisionTime: duration, // ★記録
+        decisionTime: duration, 
         location: room.name,
         event: task.name,
         choice: choiceText,
@@ -417,15 +413,12 @@ function recordLog(room, task, choiceText, resultText) {
     logs.push(logEntry);
     sendToGAS(logEntry);
     addLogToScreen(room.name, task.name, choiceText, duration);
-    
-    // 計測リセット
     eventOpenTime = 0;
 }
 
 function addLogToScreen(location, event, choice, duration) {
     const div = document.createElement('div');
     div.className = 'log-item';
-    // 画面ログにも決断時間を表示
     const timeStr = duration !== undefined ? ` (決断:${duration}秒)` : "";
     div.innerHTML = `<span class=\"log-time\">[${accumulatedTime}分]</span> <span class=\"log-event\">${location}</span><br>選択: ${choice}${timeStr}`;
     logSection.prepend(div);
@@ -477,10 +470,15 @@ document.getElementById('btn-start').onclick = () => {
     player.id = id;
     sessionUUID = Date.now().toString(36) + Math.random().toString(36).substr(2);
     sessionStartTime = new Date().toLocaleString();
+    
+    // ★追加: 軌跡初期地点にもリアルタイムを付与
     document.getElementById('top-screen').style.display = 'none';
     isGameRunning = true;
     player.x = 508; player.y = 500;
-    movementHistory = [{x:508, y:500, time:0}]; 
+    movementHistory = [{
+        x:508, y:500, time:0, 
+        realTime: new Date().toLocaleString()
+    }]; 
 };
 
 // --- 管理者・DL機能 ---
@@ -499,7 +497,7 @@ function renderAdminLogs() {
     const tbody = document.getElementById('admin-log-body');
     tbody.innerHTML = "";
     
-    // ヘッダーを更新
+    // ヘッダー更新
     const theadRow = document.querySelector('#admin-table thead tr');
     theadRow.innerHTML = `<th>ID</th><th>日時</th><th>経過</th><th>決断(秒)</th><th>場所</th><th>イベント</th><th>選択</th><th>結果</th>`;
 
@@ -512,7 +510,6 @@ function renderAdminLogs() {
 window.clearAllLogs = () => { if(confirm("ログ削除？")) { logs=[]; renderAdminLogs(); }};
 
 window.downloadAllLogs = () => {
-    // CSVヘッダーに「決断時間(秒)」を追加
     let csvContent = "ID,日時,経過,決断時間(秒),場所,イベント,選択,結果\n" + logs.map(l => 
         `${l.playerId},${l.timestamp},${l.elapsedTime},${l.decisionTime},${l.location},${l.event},${l.choice},${l.result}`
     ).join("\n");
@@ -527,9 +524,11 @@ window.downloadAllLogs = () => {
 };
 
 window.downloadPathLogs = () => {
-    let csvContent = "Time,X,Y\n" + movementHistory.map(m => 
-        `${m.time},${m.x},${m.y}`
+    // ★追加: リアル日時を含むヘッダー
+    let csvContent = "PointRealTime,SimTime,X,Y\n" + movementHistory.map(m => 
+        `${m.realTime},${m.time},${m.x},${m.y}`
     ).join("\n");
+
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: "text/csv" });
     const link = document.createElement("a");
