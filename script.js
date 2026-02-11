@@ -1,4 +1,4 @@
-// script.js - 通信強化・完全版（軌跡記録・イベント循環・GAS連携）
+// script.js - 軌跡データ送信強化版（sendBeacon対応）
 
 // ★指定された最新のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx8Oxc4dVAK1v5crQjBGEH6zbpg3m7hZFKxx7tn9ERKfHN4bYyDSY_Y5yXuGf1cEc1L/exec";
@@ -119,13 +119,11 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-// 状態更新
 function update() {
     if (!isGameRunning) return;
     if (eventPopup.style.display === 'flex') return;
     if (resultScreen.style.display === 'flex') return; 
 
-    // 移動方向の計算
     let dx = 0; let dy = 0;
     if (keys['ArrowUp'] || keys['w']) dy = -player.speed;
     if (keys['ArrowDown'] || keys['s']) dy = player.speed;
@@ -134,16 +132,14 @@ function update() {
 
     if (dx !== 0 && dy !== 0) { dx *= 0.71; dy *= 0.71; }
 
-    // 移動処理 & 軌跡記録 & 時間経過
     if (dx !== 0 || dy !== 0) {
         moveFrameCount++;
 
-        // ★軽量化：60フレーム（約1秒）に1回の記録
+        // ★データ量調整: 60フレーム(約1秒)に1回記録
         if (moveFrameCount % 60 === 0) {
             movementHistory.push({ x: Math.floor(player.x), y: Math.floor(player.y), time: accumulatedTime });
         }
 
-        // 移動による時間経過判定
         if (moveFrameCount >= MOVE_FRAMES_PER_MINUTE) {
             addTime(1); 
             moveFrameCount = 0;
@@ -163,7 +159,6 @@ function update() {
     checkEvents();
 }
 
-// 衝突判定
 function checkCollision(x, y) {
     if (x < 0 || x > mapImage.width || y < 0 || y > mapImage.height) return true;
     const p = collisionCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
@@ -171,7 +166,6 @@ function checkCollision(x, y) {
     return false;
 }
 
-// 描画処理
 function draw() {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -181,10 +175,9 @@ function draw() {
     ctx.drawImage(mapImage, gameOffsetX, gameOffsetY, mapImage.width * scaleFactor, mapImage.height * scaleFactor);
 
     if (isGameRunning) {
-        // 軌跡
         if (movementHistory.length > 1) {
             ctx.beginPath();
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)'; // 水色
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
             ctx.lineWidth = 3;
             const startX = gameOffsetX + (movementHistory[0].x * scaleFactor);
             const startY = gameOffsetY + (movementHistory[0].y * scaleFactor);
@@ -199,7 +192,6 @@ function draw() {
             ctx.stroke();
         }
 
-        // プレイヤー
         const sx = gameOffsetX + (player.x * scaleFactor);
         const sy = gameOffsetY + (player.y * scaleFactor);
         const sr = player.radius * scaleFactor;
@@ -212,7 +204,6 @@ function draw() {
         ctx.fillStyle = "white"; ctx.font = `${12 * scaleFactor}px Meiryo`; ctx.textAlign = "center";
         ctx.fillText(player.id, sx, sy + sr + 15);
 
-        // ピン
         roomData.forEach(room => {
             if (room.isDiscovered) {
                 const allCompleted = room.tasks.every(t => t.status === 'completed');
@@ -232,7 +223,6 @@ function drawPin(x, y, color, scale) {
     ctx.beginPath(); ctx.arc(x, y - size, size/2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
 }
 
-// --- 時間管理 ---
 function addTime(minutes) {
     accumulatedTime += minutes;
     updateTimeGauge();
@@ -266,13 +256,30 @@ function finishGame() {
     // ★終了時に軌跡データを送信
     sendTrajectoryToGAS();
 
-    // リザルトログの生成
     resultLogBody.innerHTML = "";
     logs.forEach(log => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${log.elapsedTime}</td><td>${log.location}</td><td>${log.event}</td><td>${log.choice}</td><td>${log.result}</td>`;
         resultLogBody.appendChild(tr);
     });
+
+    // リザルト画面に「手動送信ボタン」を追加（もし失敗した場合用）
+    const btnArea = resultScreen.querySelector('.button-area');
+    // 既存の再送ボタンがあれば削除
+    const oldBtn = document.getElementById('btn-manual-send');
+    if(oldBtn) oldBtn.remove();
+
+    const manualSendBtn = document.createElement('button');
+    manualSendBtn.id = 'btn-manual-send';
+    manualSendBtn.className = 'dl-btn';
+    manualSendBtn.style.backgroundColor = '#ff9900';
+    manualSendBtn.textContent = '軌跡データをサーバーに送信';
+    manualSendBtn.onclick = () => {
+        alert("送信を開始します...");
+        sendTrajectoryToGAS();
+    };
+    // 挿入位置を調整
+    btnArea.insertBefore(manualSendBtn, btnArea.firstChild);
 
     resultScreen.style.display = 'flex';
 }
@@ -286,7 +293,6 @@ window.showEndScreen = () => {
 function parseCSV(text) {
     const lines = text.trim().split('\n');
     roomData = [];
-    
     for (let i = 1; i < lines.length; i++) {
         const row = parseCSVLine(lines[i]);
         if(row.length < 5) continue;
@@ -324,8 +330,6 @@ function parseCSV(text) {
 
         room.tasks.push(task);
     }
-
-    // イベント順序でソート
     roomData.forEach(room => {
         room.tasks.sort((a, b) => a.order - b.order);
     });
@@ -345,7 +349,7 @@ function parseCSVLine(line) {
     return res;
 }
 
-// --- イベント発生チェック ---
+// --- イベント制御 ---
 function checkEvents() {
     if(eventPopup.style.display === 'flex') return;
 
@@ -360,7 +364,6 @@ function checkEvents() {
             const pendingCount = room.tasks.filter(t => t.status === 'pending').length;
             if(pendingCount === 0) continue;
 
-            // 循環ロジック
             if(room.currentTaskIndex >= room.tasks.length) room.currentTaskIndex = 0;
             
             let foundTask = null;
@@ -418,7 +421,6 @@ function triggerEvent(room, task) {
 }
 
 function resolveEvent(room, task, choice, choiceIndex) {
-    // 選択肢4はpending維持
     if(choiceIndex === 3) {
         task.status = 'pending';
     } else {
@@ -440,10 +442,7 @@ function resolveEvent(room, task, choice, choiceIndex) {
     closeBtn.onclick = () => {
         eventPopup.style.display = 'none';
         if(checkTimeLimit()) return;
-        
-        // 次のタスクへ
         room.currentTaskIndex++;
-        
         if(task.status === 'completed') {
             statusDiv.textContent = `✅ ${task.name} 完了`;
         } else {
@@ -452,7 +451,7 @@ function resolveEvent(room, task, choice, choiceIndex) {
     };
 }
 
-// ログ記録・GAS送信共通
+// ログ記録
 function recordLog(room, task, choiceText, resultText) {
     const now = new Date();
     const logEntry = {
@@ -481,35 +480,58 @@ function addLogToScreen(location, event, choice) {
     logSection.prepend(div);
 }
 
-// --- ★GAS連携（最重要修正） ---
-function sendToGAS(data) {
-    console.log("Sending data to GAS:", data); // デバッグ用
+// --- GAS連携 (sendToGASとsendTrajectoryToGAS) ---
 
+// イベントログ用 (軽量なのでfetchでOK)
+function sendToGAS(data) {
     fetch(GAS_URL, {
         method: 'POST',
-        mode: 'no-cors', // GASはこれで送るのが標準
-        cache: 'no-cache',
-        credentials: 'omit',
+        mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        redirect: 'follow',
-        referrerPolicy: 'no-referrer',
-        keepalive: true, // ★これが切断を防ぐカギ
         body: JSON.stringify(data)
-    }).then(() => {
-        console.log("Request sent (no-cors mode)");
-    }).catch(err => console.error("Send Error:", err));
+    }).catch(err => console.error(err));
 }
 
-// 軌跡送信
+// ★軌跡データ送信 (sendBeaconを利用して確実に送る)
 function sendTrajectoryToGAS() {
-    if (movementHistory.length === 0) return;
+    if (movementHistory.length === 0) {
+        console.log("No trajectory data to send.");
+        return;
+    }
+
+    // データが大きすぎるとエラーになるので、最新の2000件に制限する
+    let historyToSend = movementHistory;
+    if (historyToSend.length > 2000) {
+        console.warn("History too long, truncating to last 2000 points.");
+        historyToSend = historyToSend.slice(-2000);
+    }
+
     const payload = {
         type: 'trajectory',
         playerId: player.id,
-        history: movementHistory
+        history: historyToSend
     };
-    console.log("Sending trajectory (" + movementHistory.length + " points)");
-    sendToGAS(payload);
+
+    // JSON文字列化
+    const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain' });
+
+    // navigator.sendBeaconを使用 (画面が閉じても送信される)
+    if (navigator.sendBeacon) {
+        const success = navigator.sendBeacon(GAS_URL, blob);
+        console.log("Beacon sent:", success);
+        if (success) return; // 成功したら終了
+    }
+
+    // sendBeaconが使えない、または失敗した場合は従来のfetchで再試行
+    console.log("Beacon failed or not supported, trying fetch...");
+    fetch(GAS_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' }, // sendBeaconに合わせてtext/plainにする
+        body: JSON.stringify(payload),
+        keepalive: true // 画面遷移対策
+    }).then(() => console.log("Fetch sent"))
+      .catch(err => console.error("Fetch Error:", err));
 }
 
 // --- スタートボタン ---
