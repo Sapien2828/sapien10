@@ -1,4 +1,4 @@
-// script.js - 軌跡詳細化・送信最適化・完全版
+// script.js - 回数記録・実時間記録・軌跡滑らか版
 
 // ★指定された最新のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx8Oxc4dVAK1v5crQjBGEH6zbpg3m7hZFKxx7tn9ERKfHN4bYyDSY_Y5yXuGf1cEc1L/exec";
@@ -10,7 +10,7 @@ const CSV_SRC = "./data.csv";
 
 // --- 設定値 ---
 const MAX_TIME_LIMIT = 30; // 制限時間（分）
-const MOVE_FRAMES_PER_MINUTE = 120; // 移動による時間経過（60fps想定で約2秒移動=1分）
+const MOVE_FRAMES_PER_MINUTE = 120; // 移動による時間経過
 
 // --- DOM要素の取得 ---
 const gameArea = document.getElementById('game-area');
@@ -25,11 +25,9 @@ const resultScreen = document.getElementById('result-screen');
 const resultLogBody = document.getElementById('result-log-body');
 const endScreen = document.getElementById('end-screen');
 
-// タイムゲージ用
 const timerBarFill = document.getElementById('timer-bar-fill');
 const timerText = document.getElementById('timer-text');
 
-// 当たり判定用（不可視キャンバス）
 const collisionCanvas = document.createElement('canvas');
 const collisionCtx = collisionCanvas.getContext('2d');
 
@@ -40,17 +38,18 @@ let scaleFactor = 1;
 let gameOffsetX = 0;
 let gameOffsetY = 0;
 
-// プレイヤー設定 (初期位置 X:508, Y:500)
 let player = { x: 508, y: 500, radius: 10, speed: 4, id: "" };
-let keys = {}; // キー入力状態
-let roomData = []; // CSVから読み込んだ部屋・タスクデータ
-let logs = []; // イベントログ記録用
-let movementHistory = []; // 移動軌跡記録用
-let isGameRunning = false; // ゲーム実行フラグ
+let keys = {};
+let roomData = [];
+let logs = [];
+let movementHistory = [];
+let isGameRunning = false;
 
-// 時間管理
-let accumulatedTime = 0; // 累積経過時間（分）
-let moveFrameCount = 0;  // 移動フレームカウンタ
+// 時間・セッション管理
+let accumulatedTime = 0;
+let moveFrameCount = 0;
+let sessionUUID = "";     // ★今回の訓練を識別するID
+let sessionStartTime = ""; // ★訓練開始日時
 
 // --- 初期化シーケンス ---
 mapImage.src = MAP_SRC;
@@ -65,35 +64,30 @@ function onImageLoad() {
             .then(r => r.text())
             .then(parseCSV)
             .catch(e => console.error("CSV Load Error:", e));
-        
         requestAnimationFrame(gameLoop);
     }
 }
 mapImage.onload = onImageLoad;
 collisionImage.onload = onImageLoad;
 
-// --- 画面リサイズ処理 ---
+// --- 画面リサイズ ---
 function initGameSize() {
     const w = gameArea.clientWidth;
     const h = gameArea.clientHeight;
-
     canvas.width = w;
     canvas.height = h;
-
     collisionCanvas.width = mapImage.width;
     collisionCanvas.height = mapImage.height;
     collisionCtx.drawImage(collisionImage, 0, 0);
-
     const scaleW = w / mapImage.width;
     const scaleH = h / mapImage.height;
     scaleFactor = Math.min(scaleW, scaleH);
-
     gameOffsetX = (w - (mapImage.width * scaleFactor)) / 2;
     gameOffsetY = (h - (mapImage.height * scaleFactor)) / 2;
 }
 window.addEventListener('resize', initGameSize);
 
-// --- 入力ハンドリング ---
+// --- 入力 ---
 window.addEventListener('keydown', e => keys[e.key] = true);
 window.addEventListener('keyup', e => keys[e.key] = false);
 
@@ -103,7 +97,6 @@ canvas.addEventListener('mousemove', (e) => {
     const mouseY = e.clientY - rect.top;
     const originalX = Math.round((mouseX - gameOffsetX) / scaleFactor);
     const originalY = Math.round((mouseY - gameOffsetY) / scaleFactor);
-    
     if(originalX >= 0 && originalX <= mapImage.width && originalY >= 0 && originalY <= mapImage.height) {
         debugCoords.textContent = `X:${originalX} Y:${originalY}`;
     } else {
@@ -134,7 +127,7 @@ function update() {
     if (dx !== 0 || dy !== 0) {
         moveFrameCount++;
 
-        // ★修正点：記録頻度を10フレーム(約0.16秒)に1回に戻しました（滑らかになります）
+        // ★滑らか重視：10フレーム(約0.16秒)に1回記録
         if (moveFrameCount % 10 === 0) {
             movementHistory.push({ x: Math.floor(player.x), y: Math.floor(player.y), time: accumulatedTime });
         }
@@ -144,7 +137,6 @@ function update() {
             moveFrameCount = 0;
             statusDiv.textContent = "移動により時間が経過しました";
             setTimeout(() => { if(isGameRunning) statusDiv.textContent = ""; }, 2000);
-            
             if(checkTimeLimit()) return; 
         }
     }
@@ -168,12 +160,11 @@ function checkCollision(x, y) {
 function draw() {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     if (!mapImage.complete) return;
-
     ctx.drawImage(mapImage, gameOffsetX, gameOffsetY, mapImage.width * scaleFactor, mapImage.height * scaleFactor);
 
     if (isGameRunning) {
+        // 軌跡
         if (movementHistory.length > 1) {
             ctx.beginPath();
             ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
@@ -181,7 +172,6 @@ function draw() {
             const startX = gameOffsetX + (movementHistory[0].x * scaleFactor);
             const startY = gameOffsetY + (movementHistory[0].y * scaleFactor);
             ctx.moveTo(startX, startY);
-
             for (let i = 1; i < movementHistory.length; i++) {
                 const px = gameOffsetX + (movementHistory[i].x * scaleFactor);
                 const py = gameOffsetY + (movementHistory[i].y * scaleFactor);
@@ -190,19 +180,16 @@ function draw() {
             ctx.lineTo(gameOffsetX + (player.x * scaleFactor), gameOffsetY + (player.y * scaleFactor));
             ctx.stroke();
         }
-
+        // プレイヤー
         const sx = gameOffsetX + (player.x * scaleFactor);
         const sy = gameOffsetY + (player.y * scaleFactor);
         const sr = player.radius * scaleFactor;
-
-        ctx.fillStyle = '#00f0ff';
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 2;
+        ctx.fillStyle = '#00f0ff'; ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(sx, sy - sr * 0.4, sr * 0.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(sx - sr, sy + sr); ctx.quadraticCurveTo(sx, sy - sr * 0.5, sx + sr, sy + sr); ctx.closePath(); ctx.fill(); ctx.stroke();
         ctx.fillStyle = "white"; ctx.font = `${12 * scaleFactor}px Meiryo`; ctx.textAlign = "center";
         ctx.fillText(player.id, sx, sy + sr + 15);
-
+        // ピン
         roomData.forEach(room => {
             if (room.isDiscovered) {
                 const allCompleted = room.tasks.every(t => t.status === 'completed');
@@ -230,10 +217,8 @@ function addTime(minutes) {
 function updateTimeGauge() {
     let percent = (accumulatedTime / MAX_TIME_LIMIT) * 100;
     if (percent > 100) percent = 100;
-
     timerBarFill.style.width = percent + "%";
     timerText.textContent = `${accumulatedTime} / ${MAX_TIME_LIMIT} 分`;
-
     if (percent < 50) timerBarFill.style.backgroundColor = "#00ff00";
     else if (percent < 80) timerBarFill.style.backgroundColor = "#ffcc00";
     else timerBarFill.style.backgroundColor = "#ff3333";
@@ -251,9 +236,7 @@ function checkTimeLimit() {
 function finishGame() {
     isGameRunning = false;
     eventPopup.style.display = 'none';
-
-    // ★終了時に軌跡データを送信
-    sendTrajectoryToGAS();
+    sendTrajectoryToGAS(); // 軌跡送信
 
     resultLogBody.innerHTML = "";
     logs.forEach(log => {
@@ -262,19 +245,16 @@ function finishGame() {
         resultLogBody.appendChild(tr);
     });
 
+    // 手動送信ボタン
     const btnArea = resultScreen.querySelector('.button-area');
     const oldBtn = document.getElementById('btn-manual-send');
     if(oldBtn) oldBtn.remove();
-
     const manualSendBtn = document.createElement('button');
     manualSendBtn.id = 'btn-manual-send';
     manualSendBtn.className = 'dl-btn';
     manualSendBtn.style.backgroundColor = '#ff9900';
     manualSendBtn.textContent = '軌跡データをサーバーに送信';
-    manualSendBtn.onclick = () => {
-        alert("送信を開始します...");
-        sendTrajectoryToGAS();
-    };
+    manualSendBtn.onclick = () => { alert("送信を開始します..."); sendTrajectoryToGAS(); };
     btnArea.insertBefore(manualSendBtn, btnArea.firstChild);
 
     resultScreen.style.display = 'flex';
@@ -292,7 +272,6 @@ function parseCSV(text) {
     for (let i = 1; i < lines.length; i++) {
         const row = parseCSVLine(lines[i]);
         if(row.length < 5) continue;
-
         const roomName = row[2];
         const x = parseInt(row[3]);
         const y = parseInt(row[4]);
@@ -301,34 +280,17 @@ function parseCSV(text) {
 
         let room = roomData.find(d => d.name === roomName && Math.abs(d.x - x) < 5 && Math.abs(d.y - y) < 5);
         if(!room) {
-            room = { 
-                name: roomName, x: x, y: y, radius: r, tasks: [], 
-                isDiscovered: false,
-                ignoreUntilExit: false,
-                currentTaskIndex: 0
-            };
+            room = { name: roomName, x: x, y: y, radius: r, tasks: [], isDiscovered: false, ignoreUntilExit: false, currentTaskIndex: 0 };
             roomData.push(room);
         }
-
-        const task = {
-            id: row[0],
-            name: row[7],
-            description: row[8],
-            order: order,
-            choices: [],
-            status: 'pending'
-        };
-
+        const task = { id: row[0], name: row[7], description: row[8], order: order, choices: [], status: 'pending' };
         if(row[9]) task.choices.push({ text: row[9], result: row[10], time: parseInt(row[11]||0) });
         if(row[12]) task.choices.push({ text: row[12], result: row[13], time: parseInt(row[14]||0) });
         if(row[15]) task.choices.push({ text: row[15], result: row[16], time: parseInt(row[17]||0) });
         if(row[18]) task.choices.push({ text: row[18], result: row[19], time: parseInt(row[20]||0) });
-
         room.tasks.push(task);
     }
-    roomData.forEach(room => {
-        room.tasks.sort((a, b) => a.order - b.order);
-    });
+    roomData.forEach(room => { room.tasks.sort((a, b) => a.order - b.order); });
 }
 
 function parseCSVLine(line) {
@@ -336,10 +298,7 @@ function parseCSVLine(line) {
     let start = 0, inQ = false;
     for(let i=0; i<line.length; i++){
         if(line[i]==='"') inQ = !inQ;
-        if(line[i]===',' && !inQ){
-            res.push(line.substring(start, i).replace(/^"|"$/g,''));
-            start=i+1;
-        }
+        if(line[i]===',' && !inQ){ res.push(line.substring(start, i).replace(/^"|"$/g,'')); start=i+1; }
     }
     res.push(line.substring(start).replace(/^"|"$/g,''));
     return res;
@@ -348,20 +307,15 @@ function parseCSVLine(line) {
 // --- イベント制御 ---
 function checkEvents() {
     if(eventPopup.style.display === 'flex') return;
-
     for (let i = 0; i < roomData.length; i++) {
         const room = roomData[i];
         const dist = Math.hypot(player.x - room.x, player.y - room.y);
-
         if (dist < room.radius) {
             room.isDiscovered = true;
             if (room.ignoreUntilExit) continue; 
-
             const pendingCount = room.tasks.filter(t => t.status === 'pending').length;
             if(pendingCount === 0) continue;
-
             if(room.currentTaskIndex >= room.tasks.length) room.currentTaskIndex = 0;
-            
             let foundTask = null;
             let startIndex = room.currentTaskIndex;
             let count = 0;
@@ -374,11 +328,7 @@ function checkEvents() {
                 }
                 count++;
             }
-
-            if (foundTask) {
-                triggerEvent(room, foundTask);
-                break;
-            }
+            if (foundTask) { triggerEvent(room, foundTask); break; }
         } else {
             room.ignoreUntilExit = false;
         }
@@ -389,10 +339,8 @@ function triggerEvent(room, task) {
     keys = {};
     document.getElementById('event-title').textContent = `場所: ${room.name}`;
     document.getElementById('event-desc').innerHTML = `<strong>${task.name}</strong><br>${task.description}`;
-    
     const choicesDiv = document.getElementById('event-choices');
     choicesDiv.innerHTML = "";
-
     task.choices.forEach((c, index) => {
         const btn = document.createElement('button');
         btn.className = 'choice-btn';
@@ -400,7 +348,6 @@ function triggerEvent(room, task) {
         btn.onclick = () => resolveEvent(room, task, c, index);
         choicesDiv.appendChild(btn);
     });
-
     const holdBtn = document.createElement('button');
     holdBtn.className = 'choice-btn';
     holdBtn.style.backgroundColor = '#777';
@@ -411,27 +358,16 @@ function triggerEvent(room, task) {
         recordLog(room, task, "保留", "対応を後回しにした");
     };
     choicesDiv.appendChild(holdBtn);
-
     document.getElementById('close-btn').style.display = 'none';
     eventPopup.style.display = 'flex';
 }
 
 function resolveEvent(room, task, choice, choiceIndex) {
-    if(choiceIndex === 3) {
-        task.status = 'pending';
-    } else {
-        task.status = 'completed';
-    }
-
+    if(choiceIndex === 3) task.status = 'pending'; else task.status = 'completed';
     addTime(choice.time || 0);
     recordLog(room, task, choice.text, choice.result);
-
-    document.getElementById('event-desc').innerHTML = `
-        <div style="color:#5bc0de; font-weight:bold; margin-bottom:10px;">選択結果</div>
-        ${choice.result}
-    `;
+    document.getElementById('event-desc').innerHTML = `<div style="color:#5bc0de; font-weight:bold; margin-bottom:10px;">選択結果</div>${choice.result}`;
     document.getElementById('event-choices').innerHTML = "";
-    
     const closeBtn = document.getElementById('close-btn');
     closeBtn.style.display = 'block';
     closeBtn.textContent = "確認";
@@ -439,20 +375,18 @@ function resolveEvent(room, task, choice, choiceIndex) {
         eventPopup.style.display = 'none';
         if(checkTimeLimit()) return;
         room.currentTaskIndex++;
-        if(task.status === 'completed') {
-            statusDiv.textContent = `✅ ${task.name} 完了`;
-        } else {
-            statusDiv.textContent = `⏭️ ${task.name} 次へ`;
-        }
+        if(task.status === 'completed') statusDiv.textContent = `✅ ${task.name} 完了`; else statusDiv.textContent = `⏭️ ${task.name} 次へ`;
     };
 }
 
-// ログ記録
+// --- ログ記録・送信 ---
 function recordLog(room, task, choiceText, resultText) {
     const now = new Date();
     const logEntry = {
         type: 'event', 
         playerId: player.id,
+        sessionUUID: sessionUUID,     // ★追加
+        startTime: sessionStartTime,  // ★追加
         timestamp: now.toLocaleString(),
         elapsedTime: accumulatedTime + "分",
         location: room.name,
@@ -468,16 +402,11 @@ function recordLog(room, task, choiceText, resultText) {
 function addLogToScreen(location, event, choice) {
     const div = document.createElement('div');
     div.className = 'log-item';
-    div.innerHTML = `
-        <span class="log-time">[${accumulatedTime}分]</span>
-        <span class="log-event">${location}</span><br>
-        選択: ${choice}
-    `;
+    div.innerHTML = `<span class=\"log-time\">[${accumulatedTime}分]</span> <span class=\"log-event\">${location}</span><br>選択: ${choice}`;
     logSection.prepend(div);
 }
 
 // --- GAS連携 ---
-
 function sendToGAS(data) {
     fetch(GAS_URL, {
         method: 'POST',
@@ -487,21 +416,14 @@ function sendToGAS(data) {
     }).catch(err => console.error(err));
 }
 
-// ★軌跡データ送信（最適化版）
 function sendTrajectoryToGAS() {
-    if (movementHistory.length === 0) {
-        console.log("No trajectory data to send.");
-        return;
-    }
+    if (movementHistory.length === 0) return;
 
-    // ★重要: データの間引き処理 (Downsampling)
-    // GASの制限を超えないように、全体の形状を保ちつつデータ数を減らす
+    // データ間引き（送信エラー防止）
     let historyToSend = movementHistory;
-    const MAX_POINTS = 3000; // GASが一度に処理できる安全圏内の行数
-
+    const MAX_POINTS = 3000;
     if (historyToSend.length > MAX_POINTS) {
-        console.log(`History too long (${historyToSend.length}). Downsampling to ${MAX_POINTS}.`);
-        // 等間隔で間引く (例: 10000件 -> 3000件にするなら、約3.3件に1件採用)
+        console.log(`Downsampling trajectory: ${historyToSend.length} -> ${MAX_POINTS}`);
         const step = historyToSend.length / MAX_POINTS;
         historyToSend = historyToSend.filter((_, index) => index % Math.ceil(step) === 0);
     }
@@ -509,41 +431,38 @@ function sendTrajectoryToGAS() {
     const payload = {
         type: 'trajectory',
         playerId: player.id,
+        sessionUUID: sessionUUID,     // ★追加
+        startTime: sessionStartTime,  // ★追加
         history: historyToSend
     };
 
-    // JSON文字列化
     const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain' });
-
-    // navigator.sendBeaconを使用 (画面が閉じても送信される)
     if (navigator.sendBeacon) {
-        const success = navigator.sendBeacon(GAS_URL, blob);
-        console.log("Beacon sent:", success);
-        if (success) return; 
+        navigator.sendBeacon(GAS_URL, blob);
+    } else {
+        fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(payload),
+            keepalive: true
+        });
     }
-
-    // sendBeacon失敗時はfetchで再試行
-    console.log("Using fetch fallback...");
-    fetch(GAS_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload),
-        keepalive: true
-    }).then(() => console.log("Fetch sent"))
-      .catch(err => console.error("Fetch Error:", err));
 }
 
-// --- スタートボタン ---
+// --- スタートボタン（セッションID生成） ---
 document.getElementById('btn-start').onclick = () => {
     const id = playerIdInput.value;
     if(!id) { alert("IDを入力してください"); return; }
     player.id = id;
+    
+    // ★セッションIDと開始時間を生成
+    sessionUUID = Date.now().toString(36) + Math.random().toString(36).substr(2);
+    sessionStartTime = new Date().toLocaleString();
+
     document.getElementById('top-screen').style.display = 'none';
     isGameRunning = true;
-    
-    player.x = 508;
-    player.y = 500;
+    player.x = 508; player.y = 500;
     movementHistory = [{x:508, y:500, time:0}]; 
 };
 
@@ -574,7 +493,6 @@ window.downloadAllLogs = () => {
     let csvContent = "ID,日時,経過,場所,イベント,選択,結果\n" + logs.map(l => 
         `${l.playerId},${l.timestamp},${l.elapsedTime},${l.location},${l.event},${l.choice},${l.result}`
     ).join("\n");
-    
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: "text/csv" });
     const link = document.createElement("a");
@@ -588,7 +506,6 @@ window.downloadPathLogs = () => {
     let csvContent = "Time,X,Y\n" + movementHistory.map(m => 
         `${m.time},${m.x},${m.y}`
     ).join("\n");
-
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: "text/csv" });
     const link = document.createElement("a");
