@@ -1,4 +1,4 @@
-// script.js - 回数記録・実時間記録・軌跡滑らか版
+// script.js - 決断時間計測・リアル日時記録・完全版
 
 // ★指定された最新のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx8Oxc4dVAK1v5crQjBGEH6zbpg3m7hZFKxx7tn9ERKfHN4bYyDSY_Y5yXuGf1cEc1L/exec";
@@ -9,10 +9,10 @@ const COLLISION_SRC = "./map_collision.bmp";
 const CSV_SRC = "./data.csv";
 
 // --- 設定値 ---
-const MAX_TIME_LIMIT = 30; // 制限時間（分）
-const MOVE_FRAMES_PER_MINUTE = 120; // 移動による時間経過
+const MAX_TIME_LIMIT = 30; 
+const MOVE_FRAMES_PER_MINUTE = 120; 
 
-// --- DOM要素の取得 ---
+// --- DOM要素 ---
 const gameArea = document.getElementById('game-area');
 const canvas = document.getElementById('map-canvas');
 const ctx = canvas.getContext('2d');
@@ -48,10 +48,13 @@ let isGameRunning = false;
 // 時間・セッション管理
 let accumulatedTime = 0;
 let moveFrameCount = 0;
-let sessionUUID = "";     // ★今回の訓練を識別するID
-let sessionStartTime = ""; // ★訓練開始日時
+let sessionUUID = "";
+let sessionStartTime = "";
 
-// --- 初期化シーケンス ---
+// ★追加: 決断時間計測用
+let eventOpenTime = 0; // ポップアップが開いた瞬間のリアルタイム
+
+// --- 初期化 ---
 mapImage.src = MAP_SRC;
 collisionImage.src = COLLISION_SRC;
 
@@ -74,10 +77,8 @@ collisionImage.onload = onImageLoad;
 function initGameSize() {
     const w = gameArea.clientWidth;
     const h = gameArea.clientHeight;
-    canvas.width = w;
-    canvas.height = h;
-    collisionCanvas.width = mapImage.width;
-    collisionCanvas.height = mapImage.height;
+    canvas.width = w; canvas.height = h;
+    collisionCanvas.width = mapImage.width; collisionCanvas.height = mapImage.height;
     collisionCtx.drawImage(collisionImage, 0, 0);
     const scaleW = w / mapImage.width;
     const scaleH = h / mapImage.height;
@@ -126,12 +127,10 @@ function update() {
 
     if (dx !== 0 || dy !== 0) {
         moveFrameCount++;
-
-        // ★滑らか重視：10フレーム(約0.16秒)に1回記録
+        // 軌跡記録 (10フレーム毎 = 滑らか)
         if (moveFrameCount % 10 === 0) {
             movementHistory.push({ x: Math.floor(player.x), y: Math.floor(player.y), time: accumulatedTime });
         }
-
         if (moveFrameCount >= MOVE_FRAMES_PER_MINUTE) {
             addTime(1); 
             moveFrameCount = 0;
@@ -158,8 +157,7 @@ function checkCollision(x, y) {
 }
 
 function draw() {
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (!mapImage.complete) return;
     ctx.drawImage(mapImage, gameOffsetX, gameOffsetY, mapImage.width * scaleFactor, mapImage.height * scaleFactor);
 
@@ -167,8 +165,7 @@ function draw() {
         // 軌跡
         if (movementHistory.length > 1) {
             ctx.beginPath();
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
-            ctx.lineWidth = 3;
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)'; ctx.lineWidth = 3;
             const startX = gameOffsetX + (movementHistory[0].x * scaleFactor);
             const startY = gameOffsetY + (movementHistory[0].y * scaleFactor);
             ctx.moveTo(startX, startY);
@@ -236,14 +233,24 @@ function checkTimeLimit() {
 function finishGame() {
     isGameRunning = false;
     eventPopup.style.display = 'none';
-    sendTrajectoryToGAS(); // 軌跡送信
+    sendTrajectoryToGAS();
 
     resultLogBody.innerHTML = "";
     logs.forEach(log => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${log.elapsedTime}</td><td>${log.location}</td><td>${log.event}</td><td>${log.choice}</td><td>${log.result}</td>`;
+        // 結果画面にも日時と決断時間を表示
+        tr.innerHTML = `<td>${log.elapsedTime}</td><td>${log.timestamp}</td><td>${log.decisionTime}秒</td><td>${log.location}</td><td>${log.event}</td><td>${log.choice}</td><td>${log.result}</td>`;
         resultLogBody.appendChild(tr);
     });
+
+    // リザルトテーブルヘッダー更新用にID取得（簡易的）
+    const ths = document.getElementById('result-table').querySelectorAll('th');
+    if(ths.length < 7) {
+       // 時間, 場所, イベント... となっているので、項目を増やす必要があるが、
+       // HTML構造を変えずにJSで差し込む
+       const headerRow = document.querySelector('#result-table thead tr');
+       headerRow.innerHTML = `<th>シミュ経過</th><th>リアル日時</th><th>決断秒数</th><th>場所</th><th>イベント</th><th>選択</th><th>結果</th>`;
+    }
 
     // 手動送信ボタン
     const btnArea = resultScreen.querySelector('.button-area');
@@ -339,6 +346,10 @@ function triggerEvent(room, task) {
     keys = {};
     document.getElementById('event-title').textContent = `場所: ${room.name}`;
     document.getElementById('event-desc').innerHTML = `<strong>${task.name}</strong><br>${task.description}`;
+    
+    // ★追加: イベントが開かれた時間を記録
+    eventOpenTime = Date.now();
+
     const choicesDiv = document.getElementById('event-choices');
     choicesDiv.innerHTML = "";
     task.choices.forEach((c, index) => {
@@ -379,16 +390,25 @@ function resolveEvent(room, task, choice, choiceIndex) {
     };
 }
 
-// --- ログ記録・送信 ---
+// ログ記録
 function recordLog(room, task, choiceText, resultText) {
     const now = new Date();
+    
+    // ★追加: 決断にかかった時間を計算（秒単位）
+    // イベントが開かれた時間が0の場合は0とする
+    let duration = 0;
+    if (eventOpenTime > 0) {
+        duration = Math.floor((Date.now() - eventOpenTime) / 1000);
+    }
+
     const logEntry = {
         type: 'event', 
         playerId: player.id,
-        sessionUUID: sessionUUID,     // ★追加
-        startTime: sessionStartTime,  // ★追加
+        sessionUUID: sessionUUID,
+        startTime: sessionStartTime,
         timestamp: now.toLocaleString(),
         elapsedTime: accumulatedTime + "分",
+        decisionTime: duration, // ★記録
         location: room.name,
         event: task.name,
         choice: choiceText,
@@ -396,13 +416,18 @@ function recordLog(room, task, choiceText, resultText) {
     };
     logs.push(logEntry);
     sendToGAS(logEntry);
-    addLogToScreen(room.name, task.name, choiceText);
+    addLogToScreen(room.name, task.name, choiceText, duration);
+    
+    // 計測リセット
+    eventOpenTime = 0;
 }
 
-function addLogToScreen(location, event, choice) {
+function addLogToScreen(location, event, choice, duration) {
     const div = document.createElement('div');
     div.className = 'log-item';
-    div.innerHTML = `<span class=\"log-time\">[${accumulatedTime}分]</span> <span class=\"log-event\">${location}</span><br>選択: ${choice}`;
+    // 画面ログにも決断時間を表示
+    const timeStr = duration !== undefined ? ` (決断:${duration}秒)` : "";
+    div.innerHTML = `<span class=\"log-time\">[${accumulatedTime}分]</span> <span class=\"log-event\">${location}</span><br>選択: ${choice}${timeStr}`;
     logSection.prepend(div);
 }
 
@@ -418,24 +443,19 @@ function sendToGAS(data) {
 
 function sendTrajectoryToGAS() {
     if (movementHistory.length === 0) return;
-
-    // データ間引き（送信エラー防止）
     let historyToSend = movementHistory;
     const MAX_POINTS = 3000;
     if (historyToSend.length > MAX_POINTS) {
-        console.log(`Downsampling trajectory: ${historyToSend.length} -> ${MAX_POINTS}`);
         const step = historyToSend.length / MAX_POINTS;
         historyToSend = historyToSend.filter((_, index) => index % Math.ceil(step) === 0);
     }
-
     const payload = {
         type: 'trajectory',
         playerId: player.id,
-        sessionUUID: sessionUUID,     // ★追加
-        startTime: sessionStartTime,  // ★追加
+        sessionUUID: sessionUUID,
+        startTime: sessionStartTime,
         history: historyToSend
     };
-
     const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain' });
     if (navigator.sendBeacon) {
         navigator.sendBeacon(GAS_URL, blob);
@@ -450,16 +470,13 @@ function sendTrajectoryToGAS() {
     }
 }
 
-// --- スタートボタン（セッションID生成） ---
+// --- スタートボタン ---
 document.getElementById('btn-start').onclick = () => {
     const id = playerIdInput.value;
     if(!id) { alert("IDを入力してください"); return; }
     player.id = id;
-    
-    // ★セッションIDと開始時間を生成
     sessionUUID = Date.now().toString(36) + Math.random().toString(36).substr(2);
     sessionStartTime = new Date().toLocaleString();
-
     document.getElementById('top-screen').style.display = 'none';
     isGameRunning = true;
     player.x = 508; player.y = 500;
@@ -481,18 +498,25 @@ window.closeAdminScreen = () => { document.getElementById('admin-screen').style.
 function renderAdminLogs() {
     const tbody = document.getElementById('admin-log-body');
     tbody.innerHTML = "";
+    
+    // ヘッダーを更新
+    const theadRow = document.querySelector('#admin-table thead tr');
+    theadRow.innerHTML = `<th>ID</th><th>日時</th><th>経過</th><th>決断(秒)</th><th>場所</th><th>イベント</th><th>選択</th><th>結果</th>`;
+
     logs.forEach(log => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${log.playerId}</td><td>${log.timestamp}</td><td>${log.elapsedTime}</td><td>${log.location}</td><td>${log.event}</td><td>${log.choice}</td><td>${log.result}</td>`;
+        tr.innerHTML = `<td>${log.playerId}</td><td>${log.timestamp}</td><td>${log.elapsedTime}</td><td>${log.decisionTime}</td><td>${log.location}</td><td>${log.event}</td><td>${log.choice}</td><td>${log.result}</td>`;
         tbody.appendChild(tr);
     });
 }
 window.clearAllLogs = () => { if(confirm("ログ削除？")) { logs=[]; renderAdminLogs(); }};
 
 window.downloadAllLogs = () => {
-    let csvContent = "ID,日時,経過,場所,イベント,選択,結果\n" + logs.map(l => 
-        `${l.playerId},${l.timestamp},${l.elapsedTime},${l.location},${l.event},${l.choice},${l.result}`
+    // CSVヘッダーに「決断時間(秒)」を追加
+    let csvContent = "ID,日時,経過,決断時間(秒),場所,イベント,選択,結果\n" + logs.map(l => 
+        `${l.playerId},${l.timestamp},${l.elapsedTime},${l.decisionTime},${l.location},${l.event},${l.choice},${l.result}`
     ).join("\n");
+    
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: "text/csv" });
     const link = document.createElement("a");
