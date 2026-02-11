@@ -1,4 +1,4 @@
-// script.js - 軌跡データ送信強化版（sendBeacon対応）
+// script.js - 軌跡詳細化・送信最適化・完全版
 
 // ★指定された最新のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx8Oxc4dVAK1v5crQjBGEH6zbpg3m7hZFKxx7tn9ERKfHN4bYyDSY_Y5yXuGf1cEc1L/exec";
@@ -97,7 +97,6 @@ window.addEventListener('resize', initGameSize);
 window.addEventListener('keydown', e => keys[e.key] = true);
 window.addEventListener('keyup', e => keys[e.key] = false);
 
-// マウス移動（デバッグ用座標表示）
 canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -135,8 +134,8 @@ function update() {
     if (dx !== 0 || dy !== 0) {
         moveFrameCount++;
 
-        // ★データ量調整: 60フレーム(約1秒)に1回記録
-        if (moveFrameCount % 60 === 0) {
+        // ★修正点：記録頻度を10フレーム(約0.16秒)に1回に戻しました（滑らかになります）
+        if (moveFrameCount % 10 === 0) {
             movementHistory.push({ x: Math.floor(player.x), y: Math.floor(player.y), time: accumulatedTime });
         }
 
@@ -263,9 +262,7 @@ function finishGame() {
         resultLogBody.appendChild(tr);
     });
 
-    // リザルト画面に「手動送信ボタン」を追加（もし失敗した場合用）
     const btnArea = resultScreen.querySelector('.button-area');
-    // 既存の再送ボタンがあれば削除
     const oldBtn = document.getElementById('btn-manual-send');
     if(oldBtn) oldBtn.remove();
 
@@ -278,7 +275,6 @@ function finishGame() {
         alert("送信を開始します...");
         sendTrajectoryToGAS();
     };
-    // 挿入位置を調整
     btnArea.insertBefore(manualSendBtn, btnArea.firstChild);
 
     resultScreen.style.display = 'flex';
@@ -480,9 +476,8 @@ function addLogToScreen(location, event, choice) {
     logSection.prepend(div);
 }
 
-// --- GAS連携 (sendToGASとsendTrajectoryToGAS) ---
+// --- GAS連携 ---
 
-// イベントログ用 (軽量なのでfetchでOK)
 function sendToGAS(data) {
     fetch(GAS_URL, {
         method: 'POST',
@@ -492,18 +487,23 @@ function sendToGAS(data) {
     }).catch(err => console.error(err));
 }
 
-// ★軌跡データ送信 (sendBeaconを利用して確実に送る)
+// ★軌跡データ送信（最適化版）
 function sendTrajectoryToGAS() {
     if (movementHistory.length === 0) {
         console.log("No trajectory data to send.");
         return;
     }
 
-    // データが大きすぎるとエラーになるので、最新の2000件に制限する
+    // ★重要: データの間引き処理 (Downsampling)
+    // GASの制限を超えないように、全体の形状を保ちつつデータ数を減らす
     let historyToSend = movementHistory;
-    if (historyToSend.length > 2000) {
-        console.warn("History too long, truncating to last 2000 points.");
-        historyToSend = historyToSend.slice(-2000);
+    const MAX_POINTS = 3000; // GASが一度に処理できる安全圏内の行数
+
+    if (historyToSend.length > MAX_POINTS) {
+        console.log(`History too long (${historyToSend.length}). Downsampling to ${MAX_POINTS}.`);
+        // 等間隔で間引く (例: 10000件 -> 3000件にするなら、約3.3件に1件採用)
+        const step = historyToSend.length / MAX_POINTS;
+        historyToSend = historyToSend.filter((_, index) => index % Math.ceil(step) === 0);
     }
 
     const payload = {
@@ -519,17 +519,17 @@ function sendTrajectoryToGAS() {
     if (navigator.sendBeacon) {
         const success = navigator.sendBeacon(GAS_URL, blob);
         console.log("Beacon sent:", success);
-        if (success) return; // 成功したら終了
+        if (success) return; 
     }
 
-    // sendBeaconが使えない、または失敗した場合は従来のfetchで再試行
-    console.log("Beacon failed or not supported, trying fetch...");
+    // sendBeacon失敗時はfetchで再試行
+    console.log("Using fetch fallback...");
     fetch(GAS_URL, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' }, // sendBeaconに合わせてtext/plainにする
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload),
-        keepalive: true // 画面遷移対策
+        keepalive: true
     }).then(() => console.log("Fetch sent"))
       .catch(err => console.error("Fetch Error:", err));
 }
