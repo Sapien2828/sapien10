@@ -1,7 +1,7 @@
-// script.js - 完全版（イベント循環・軌跡記録・GAS連携・30分制限）
+// script.js - 完全版（軌跡データ軽量化・イベント循環・GAS連携・30分制限）
 
-// ★指定のGAS URL
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwATkMNs5G_V5qde_lG8ch8z3thTfjPvJA_sj5klz-NwHWkwvNMUNVkYnphx6EHpqX_/exec";
+// ★指定された最新のGAS URL
+const GAS_URL = "https://script.google.com/macros/s/AKfycbx8Oxc4dVAK1v5crQjBGEH6zbpg3m7hZFKxx7tn9ERKfHN4bYyDSY_Y5yXuGf1cEc1L/exec";
 
 // --- 画像・データファイルパス ---
 const MAP_SRC = "./map.bmp";
@@ -148,8 +148,8 @@ function update() {
     if (dx !== 0 || dy !== 0) {
         moveFrameCount++;
 
-        // 一定間隔（10フレーム毎）で軌跡を記録
-        if (moveFrameCount % 10 === 0) {
+        // ★修正点：データ量を減らすため、60フレーム（約1秒）に1回の記録に変更
+        if (moveFrameCount % 60 === 0) {
             movementHistory.push({ x: Math.floor(player.x), y: Math.floor(player.y), time: accumulatedTime });
         }
 
@@ -308,7 +308,7 @@ function finishGame() {
     isGameRunning = false;
     eventPopup.style.display = 'none';
 
-    // 終了時に軌跡データを送信
+    // ★終了時に軌跡データを送信
     sendTrajectoryToGAS();
 
     // リザルトログの生成
@@ -572,6 +572,8 @@ function sendTrajectoryToGAS() {
         playerId: player.id,
         history: movementHistory
     };
+    // データ量が多いのでコンソールログにも出す
+    console.log("Sending trajectory data...", payload);
     sendToGAS(payload);
 }
 
