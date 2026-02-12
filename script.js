@@ -1,4 +1,4 @@
-// script.js - 軌跡リアル日時記録・空シート対応版・完全版
+// script.js - 画像保存・文言変更・完全版
 
 // ★指定された最新のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx8Oxc4dVAK1v5crQjBGEH6zbpg3m7hZFKxx7tn9ERKfHN4bYyDSY_Y5yXuGf1cEc1L/exec";
@@ -10,7 +10,7 @@ const CSV_SRC = "./data.csv";
 
 // --- 設定値 ---
 const MAX_TIME_LIMIT = 30; // 制限時間（分）
-const MOVE_FRAMES_PER_MINUTE = 120; // 移動による時間経過（60fps想定で約2秒移動=1分）
+const MOVE_FRAMES_PER_MINUTE = 120; // 移動による時間経過
 
 // --- DOM要素の取得 ---
 const gameArea = document.getElementById('game-area');
@@ -50,7 +50,7 @@ let accumulatedTime = 0;
 let moveFrameCount = 0;
 let sessionUUID = "";
 let sessionStartTime = "";
-let eventOpenTime = 0; // 決断時間計測用
+let eventOpenTime = 0; 
 
 // --- 初期化 ---
 mapImage.src = MAP_SRC;
@@ -125,13 +125,13 @@ function update() {
 
     if (dx !== 0 || dy !== 0) {
         moveFrameCount++;
-        // 軌跡記録 (10フレーム毎 = 滑らか)
+        // 軌跡記録 (10フレーム毎)
         if (moveFrameCount % 10 === 0) {
             movementHistory.push({ 
                 x: Math.floor(player.x), 
                 y: Math.floor(player.y), 
                 time: accumulatedTime,
-                realTime: new Date().toLocaleString() // ★追加: リアル日時
+                realTime: new Date().toLocaleString()
             });
         }
         if (moveFrameCount >= MOVE_FRAMES_PER_MINUTE) {
@@ -164,42 +164,45 @@ function draw() {
     if (!mapImage.complete) return;
     ctx.drawImage(mapImage, gameOffsetX, gameOffsetY, mapImage.width * scaleFactor, mapImage.height * scaleFactor);
 
-    if (isGameRunning) {
-        // 軌跡
-        if (movementHistory.length > 1) {
-            ctx.beginPath();
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)'; ctx.lineWidth = 3;
-            const startX = gameOffsetX + (movementHistory[0].x * scaleFactor);
-            const startY = gameOffsetY + (movementHistory[0].y * scaleFactor);
-            ctx.moveTo(startX, startY);
-            for (let i = 1; i < movementHistory.length; i++) {
-                const px = gameOffsetX + (movementHistory[i].x * scaleFactor);
-                const py = gameOffsetY + (movementHistory[i].y * scaleFactor);
-                ctx.lineTo(px, py);
-            }
-            ctx.lineTo(gameOffsetX + (player.x * scaleFactor), gameOffsetY + (player.y * scaleFactor));
-            ctx.stroke();
+    // プレイヤーや軌跡の描画（ゲーム中またはリザルト画面の背景として）
+    // リザルト画面になっても描画し続けるために isGameRunning チェックを外すか、
+    // 描画ロジックを独立させますが、ここでは「最後の状態」を表示し続けるために
+    // isGameRunning が false でも描画自体は行うようにします。
+    
+    // 軌跡
+    if (movementHistory.length > 1) {
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)'; ctx.lineWidth = 3;
+        const startX = gameOffsetX + (movementHistory[0].x * scaleFactor);
+        const startY = gameOffsetY + (movementHistory[0].y * scaleFactor);
+        ctx.moveTo(startX, startY);
+        for (let i = 1; i < movementHistory.length; i++) {
+            const px = gameOffsetX + (movementHistory[i].x * scaleFactor);
+            const py = gameOffsetY + (movementHistory[i].y * scaleFactor);
+            ctx.lineTo(px, py);
         }
-        // プレイヤー
-        const sx = gameOffsetX + (player.x * scaleFactor);
-        const sy = gameOffsetY + (player.y * scaleFactor);
-        const sr = player.radius * scaleFactor;
-        ctx.fillStyle = '#00f0ff'; ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(sx, sy - sr * 0.4, sr * 0.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(sx - sr, sy + sr); ctx.quadraticCurveTo(sx, sy - sr * 0.5, sx + sr, sy + sr); ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = "white"; ctx.font = `${12 * scaleFactor}px Meiryo`; ctx.textAlign = "center";
-        ctx.fillText(player.id, sx, sy + sr + 15);
-        // ピン
-        roomData.forEach(room => {
-            if (room.isDiscovered) {
-                const allCompleted = room.tasks.every(t => t.status === 'completed');
-                const pinColor = allCompleted ? '#00ccff' : '#ff3333'; 
-                const px = gameOffsetX + (room.x * scaleFactor);
-                const py = gameOffsetY + (room.y * scaleFactor);
-                drawPin(px, py, pinColor, scaleFactor);
-            }
-        });
+        ctx.lineTo(gameOffsetX + (player.x * scaleFactor), gameOffsetY + (player.y * scaleFactor));
+        ctx.stroke();
     }
+    // プレイヤー
+    const sx = gameOffsetX + (player.x * scaleFactor);
+    const sy = gameOffsetY + (player.y * scaleFactor);
+    const sr = player.radius * scaleFactor;
+    ctx.fillStyle = '#00f0ff'; ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(sx, sy - sr * 0.4, sr * 0.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx - sr, sy + sr); ctx.quadraticCurveTo(sx, sy - sr * 0.5, sx + sr, sy + sr); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "white"; ctx.font = `${12 * scaleFactor}px Meiryo`; ctx.textAlign = "center";
+    ctx.fillText(player.id, sx, sy + sr + 15);
+    // ピン
+    roomData.forEach(room => {
+        if (room.isDiscovered) {
+            const allCompleted = room.tasks.every(t => t.status === 'completed');
+            const pinColor = allCompleted ? '#00ccff' : '#ff3333'; 
+            const px = gameOffsetX + (room.x * scaleFactor);
+            const py = gameOffsetY + (room.y * scaleFactor);
+            drawPin(px, py, pinColor, scaleFactor);
+        }
+    });
 }
 
 function drawPin(x, y, color, scale) {
@@ -236,6 +239,9 @@ function checkTimeLimit() {
 function finishGame() {
     isGameRunning = false;
     eventPopup.style.display = 'none';
+    
+    // ★画像と軌跡データを送信
+    sendImageToGAS();
     sendTrajectoryToGAS();
 
     resultLogBody.innerHTML = "";
@@ -259,7 +265,7 @@ function finishGame() {
     manualSendBtn.className = 'dl-btn';
     manualSendBtn.style.backgroundColor = '#ff9900';
     manualSendBtn.textContent = '軌跡データをサーバーに送信';
-    manualSendBtn.onclick = () => { alert("送信を開始します..."); sendTrajectoryToGAS(); };
+    manualSendBtn.onclick = () => { alert("送信を開始します..."); sendTrajectoryToGAS(); sendImageToGAS(); };
     btnArea.insertBefore(manualSendBtn, btnArea.firstChild);
 
     resultScreen.style.display = 'flex';
@@ -344,8 +350,6 @@ function triggerEvent(room, task) {
     keys = {};
     document.getElementById('event-title').textContent = `場所: ${room.name}`;
     document.getElementById('event-desc').innerHTML = `<strong>${task.name}</strong><br>${task.description}`;
-    
-    // イベント表示開始時間を記録
     eventOpenTime = Date.now();
 
     const choicesDiv = document.getElementById('event-choices');
@@ -360,7 +364,8 @@ function triggerEvent(room, task) {
     const holdBtn = document.createElement('button');
     holdBtn.className = 'choice-btn';
     holdBtn.style.backgroundColor = '#777';
-    holdBtn.textContent = '保留（対応せず通過する）';
+    // ★文言変更
+    holdBtn.textContent = 'この場所以外を探索する（保留）';
     holdBtn.onclick = () => {
         room.ignoreUntilExit = true;
         eventPopup.style.display = 'none';
@@ -391,7 +396,6 @@ function resolveEvent(room, task, choice, choiceIndex) {
 // ログ記録
 function recordLog(room, task, choiceText, resultText) {
     const now = new Date();
-    // 決断時間計算
     let duration = 0;
     if (eventOpenTime > 0) {
         duration = Math.floor((Date.now() - eventOpenTime) / 1000);
@@ -434,6 +438,30 @@ function sendToGAS(data) {
     }).catch(err => console.error(err));
 }
 
+// ★画像送信関数 (Base64で送信)
+function sendImageToGAS() {
+    // 描画が完了しているCanvasから画像データを取得
+    var dataURL = canvas.toDataURL("image/png");
+    var base64 = dataURL.split("base64,")[1]; // ヘッダー除去
+
+    const payload = {
+        type: 'image', // 画像識別子
+        playerId: player.id,
+        sessionUUID: sessionUUID,
+        startTime: sessionStartTime,
+        image: base64
+    };
+    
+    console.log("Sending image data...");
+    // 画像は重いので、確実性の高いsendBeacon等は使わず、text/plainとしてfetchで送るのが安定
+    fetch(GAS_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+    }).catch(err => console.error("Image Send Error:", err));
+}
+
 function sendTrajectoryToGAS() {
     if (movementHistory.length === 0) return;
     let historyToSend = movementHistory;
@@ -471,7 +499,6 @@ document.getElementById('btn-start').onclick = () => {
     sessionUUID = Date.now().toString(36) + Math.random().toString(36).substr(2);
     sessionStartTime = new Date().toLocaleString();
     
-    // ★追加: 軌跡初期地点にもリアルタイムを付与
     document.getElementById('top-screen').style.display = 'none';
     isGameRunning = true;
     player.x = 508; player.y = 500;
@@ -496,11 +523,8 @@ window.closeAdminScreen = () => { document.getElementById('admin-screen').style.
 function renderAdminLogs() {
     const tbody = document.getElementById('admin-log-body');
     tbody.innerHTML = "";
-    
-    // ヘッダー更新
     const theadRow = document.querySelector('#admin-table thead tr');
     theadRow.innerHTML = `<th>ID</th><th>日時</th><th>経過</th><th>決断(秒)</th><th>場所</th><th>イベント</th><th>選択</th><th>結果</th>`;
-
     logs.forEach(log => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${log.playerId}</td><td>${log.timestamp}</td><td>${log.elapsedTime}</td><td>${log.decisionTime}</td><td>${log.location}</td><td>${log.event}</td><td>${log.choice}</td><td>${log.result}</td>`;
@@ -513,7 +537,6 @@ window.downloadAllLogs = () => {
     let csvContent = "ID,日時,経過,決断時間(秒),場所,イベント,選択,結果\n" + logs.map(l => 
         `${l.playerId},${l.timestamp},${l.elapsedTime},${l.decisionTime},${l.location},${l.event},${l.choice},${l.result}`
     ).join("\n");
-    
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: "text/csv" });
     const link = document.createElement("a");
@@ -524,11 +547,9 @@ window.downloadAllLogs = () => {
 };
 
 window.downloadPathLogs = () => {
-    // ★追加: リアル日時を含むヘッダー
     let csvContent = "PointRealTime,SimTime,X,Y\n" + movementHistory.map(m => 
         `${m.realTime},${m.time},${m.x},${m.y}`
     ).join("\n");
-
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: "text/csv" });
     const link = document.createElement("a");
