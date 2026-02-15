@@ -19,26 +19,78 @@
         align-items: center;
     }
 
-    #main-container { display: flex; width: 100%; height: 100%; max-width: 1600px; }
+    /* メインコンテナ */
+    #main-container {
+        display: flex;
+        width: 100%;
+        height: 100%;
+        max-width: 1600px;
+    }
 
     /* 左側：ゲーム画面（マップ） */
     #game-area {
-        flex: 3; position: relative; background-color: #000; overflow: hidden; border-right: 2px solid #444;
+        flex: 3;
+        position: relative;
+        background-color: #000;
+        overflow: hidden;
+        border-right: 2px solid #444;
     }
-    canvas { display: block; }
+
+    canvas {
+        display: block;
+    }
 
     /* 右側：情報パネル */
     #info-panel {
-        flex: 1; background-color: #222; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; overflow-y: auto;
+        flex: 1;
+        background-color: #222;
+        display: flex;
+        flex-direction: column;
+        padding: 20px;
+        box-sizing: border-box;
+        overflow-y: auto;
     }
-    #timer-section { margin-bottom: 30px; text-align: center; }
-    #timer-bar-bg { width: 100%; height: 25px; background: #444; border: 2px solid #fff; border-radius: 5px; position: relative; margin-top: 10px; }
-    #timer-bar-fill { width: 0%; height: 100%; background: #00ff00; transition: width 0.3s, background-color 0.3s; }
-    #timer-text { font-size: 1.2em; font-weight: bold; margin-top: 5px; color: #fff; }
-    #status-section { margin-bottom: 20px; padding: 15px; background: #333; border-radius: 8px; border: 1px solid #555; }
-    #status-message { font-size: 1.1em; font-weight: bold; color: yellow; min-height: 1.2em; }
-    #coord-display { font-size: 0.9em; color: #aaa; margin-top: 5px; text-align: right; }
-    #log-section { flex-grow: 1; background: #000; border: 1px solid #555; padding: 10px; overflow-y: auto; font-family: monospace; font-size: 0.9em; }
+
+    /* --- 情報パネル内の要素 --- */
+    
+    #timer-section {
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    #timer-bar-bg {
+        width: 100%; height: 25px; background: #444;
+        border: 2px solid #fff; border-radius: 5px;
+        position: relative; margin-top: 10px;
+    }
+    #timer-bar-fill {
+        width: 0%; height: 100%; background: #00ff00;
+        transition: width 0.3s, background-color 0.3s;
+    }
+    #timer-text {
+        font-size: 1.2em; font-weight: bold; margin-top: 5px; color: #fff;
+    }
+
+    #status-section {
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #333; border-radius: 8px; border: 1px solid #555;
+    }
+    #status-message {
+        font-size: 1.1em; font-weight: bold; color: yellow; min-height: 1.2em;
+    }
+    #coord-display {
+        font-size: 0.9em; color: #aaa; margin-top: 5px; text-align: right;
+    }
+
+    #log-section {
+        flex-grow: 1;
+        background: #000;
+        border: 1px solid #555;
+        padding: 10px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 0.9em;
+    }
     .log-item { border-bottom: 1px solid #333; padding: 5px 0; }
     .log-time { color: #888; font-size: 0.8em; }
     .log-event { color: #5bc0de; }
@@ -46,59 +98,107 @@
     /* --- トップ画面 --- */
     #top-screen {
         position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        background: linear-gradient(to bottom, #111, #333); z-index: 3000;
+        background: linear-gradient(to bottom, #111, #333);
+        z-index: 3000;
         display: flex; flex-direction: column; align-items: center; justify-content: center;
     }
-    #top-title { font-size: 3em; color: #ffd700; text-shadow: 4px 4px 0 #000; margin-bottom: 30px; letter-spacing: 2px; text-align: center; }
+    #top-title {
+        font-size: 3em; color: #ffd700; text-shadow: 4px 4px 0 #000; 
+        margin-bottom: 30px; letter-spacing: 2px; text-align: center;
+    }
     #player-input-container { margin-bottom: 20px; text-align: center; }
-    #player-id-input { padding: 10px; font-size: 1.2em; border-radius: 5px; border: none; text-align: center; width: 250px; font-family: 'Meiryo', sans-serif; }
+    #player-id-input {
+        padding: 10px; font-size: 1.2em; border-radius: 5px; border: none; text-align: center; width: 250px;
+        font-family: 'Meiryo', sans-serif;
+    }
     .start-btn, .dl-btn {
-        padding: 15px 40px; font-size: 1.5em; background-color: #d9534f; color: white; border: none; border-radius: 50px;
-        cursor: pointer; margin: 10px; transition: transform 0.2s; font-family: 'Meiryo', sans-serif;
+        padding: 15px 40px; font-size: 1.5em; 
+        background-color: #d9534f; color: white; border: none; border-radius: 50px;
+        cursor: pointer; margin: 10px; transition: transform 0.2s;
+        font-family: 'Meiryo', sans-serif;
     }
     .start-btn:hover { transform: scale(1.05); background-color: #c9302c; }
     .dl-btn { font-size: 1em; padding: 10px 20px; background-color: #5bc0de; }
     .btn-exit { background-color: #555; }
     .btn-retry { background-color: #5cb85c; }
     .btn-finish { background-color: #333; border: 1px solid #777; }
+    /* 画像保存ボタン用 */
+    .btn-img-save { background-color: #e67e22; }
 
     /* --- オーバーレイ --- */
     .overlay-screen {
-        display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2000; align-items: center; justify-content: center;
+        display: none; position: absolute; top: 0; left: 0; 
+        width: 100%; height: 100%; background: rgba(0,0,0,0.9); 
+        z-index: 2000; align-items: center; justify-content: center;
     }
-    .popup-content, .login-box { background: #333; padding: 25px; border-radius: 10px; max-width: 600px; width: 90%; text-align: center; border: 2px solid #777; }
+    .popup-content, .login-box {
+        background: #333; padding: 25px; border-radius: 10px; 
+        max-width: 600px; width: 90%; text-align: center; border: 2px solid #777;
+        /* リザルト画面でスクロールできるようにする */
+        max-height: 90vh; overflow-y: auto; 
+    }
     .choice-btn {
-        display: block; width: 100%; margin: 10px 0; padding: 12px; background: #444; color: white; border: 1px solid #777; cursor: pointer; text-align: left; transition: background 0.2s; font-family: 'Meiryo', sans-serif;
+        display: block; width: 100%; margin: 10px 0; padding: 12px;
+        background: #444; color: white; border: 1px solid #777; cursor: pointer;
+        text-align: left; transition: background 0.2s;
+        font-family: 'Meiryo', sans-serif;
     }
     .choice-btn:hover { background: #555; }
 
     /* テーブル */
-    .table-container { max-height: 400px; overflow-y: auto; margin-top: 10px; }
+    .table-container { max-height: 300px; overflow-y: auto; margin-top: 10px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
     th, td { border: 1px solid #555; padding: 5px; text-align: left; color: white; }
     th { background-color: #444; position: sticky; top: 0; }
 
+    /* リザルト画面 */
     #result-content { max-width: 800px; }
-    #end-screen { display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; background: #000; z-index: 4000; position: absolute; top: 0; left: 0; }
+    
+    /* 終了画面 */
+    #end-screen {
+        display: none; flex-direction: column; align-items: center; justify-content: center;
+        width: 100%; height: 100%; background: #000; z-index: 4000; position: absolute; top: 0; left: 0;
+    }
+
+    /* 結果画面の画像表示エリア */
+    #result-map-image-container {
+        margin: 15px 0;
+        border: 2px solid #555;
+        text-align: center;
+    }
+    #result-map-image-container img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        margin: 0 auto;
+    }
+
 </style>
 </head>
 <body>
+
     <div id="main-container">
         <div id="game-area">
             <canvas id="map-canvas"></canvas>
         </div>
+
         <div id="info-panel">
             <div id="timer-section">
                 <div>災害対応経過時間</div>
-                <div id="timer-bar-bg"><div id="timer-bar-fill"></div></div>
+                <div id="timer-bar-bg">
+                    <div id="timer-bar-fill"></div>
+                </div>
                 <div id="timer-text">0 / 30 分</div>
             </div>
+
             <div id="status-section">
                 <div id="status-message">待機中...</div>
                 <div id="coord-display">X:0 Y:0</div>
             </div>
+
             <div style="font-weight:bold; margin-bottom:5px;">行動ログ</div>
             <div id="log-section"></div>
+            
             <div style="margin-top:20px; text-align:center;">
                  <button class="dl-btn btn-exit" onclick="openAdminLogin()">管理者メニュー</button>
             </div>
@@ -125,7 +225,10 @@
     <div id="result-screen" class="overlay-screen">
         <div class="popup-content" id="result-content">
             <div style="font-size:1.5em; color:#5bc0de; margin-bottom:10px;">訓練終了（制限時間到達）</div>
-            <p>30分が経過しました。<br>以下のログが記録されました。</p>
+            <p>30分が経過しました。<br>お疲れ様でした。</p>
+            
+            <div id="result-map-image-container"></div>
+
             <div class="table-container">
                 <table id="result-table">
                     <thead><tr><th>時間</th><th>場所</th><th>イベント</th><th>選択</th><th>結果</th></tr></thead>
@@ -133,8 +236,8 @@
                 </table>
             </div>
             <div class="button-area" style="margin-top:20px;">
+                <button class="dl-btn btn-img-save" id="btn-save-image">マップ画像を保存</button>
                 <button class="dl-btn" onclick="downloadAllLogs()">ログCSV保存</button>
-                <button class="dl-btn btn-path" onclick="downloadPathLogs()">軌跡CSV保存</button>
                 <button class="dl-btn btn-retry" onclick="location.reload()">最初から</button>
                 <button class="dl-btn btn-finish" onclick="showEndScreen()">終了する</button>
             </div>
@@ -167,7 +270,6 @@
             </div>
             <div style="margin-top:20px;">
                 <button class="dl-btn" onclick="downloadAllLogs()">CSV保存</button>
-                <button class="dl-btn btn-path" onclick="downloadPathLogs()">軌跡CSV保存</button>
                 <button class="dl-btn btn-exit" onclick="clearAllLogs()">ログ削除</button>
                 <button class="dl-btn btn-exit" onclick="closeAdminScreen()">戻る</button>
             </div>
