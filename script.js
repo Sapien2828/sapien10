@@ -1,6 +1,6 @@
-// script.js - 画像ローカル保存・結果表示版
+// script.js - 開始時イベント抑制・完全版
 
-// ★指定のGAS URL
+// ★指定された最新のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx8Oxc4dVAK1v5crQjBGEH6zbpg3m7hZFKxx7tn9ERKfHN4bYyDSY_Y5yXuGf1cEc1L/exec";
 
 // --- 画像・データファイルパス ---
@@ -51,6 +51,9 @@ let moveFrameCount = 0;
 let sessionUUID = "";
 let sessionStartTime = "";
 let eventOpenTime = 0; 
+
+// ★追加: プレイヤーが一度でも動いたかどうかのフラグ
+let hasPlayerMoved = false;
 
 // --- 初期化 ---
 mapImage.src = MAP_SRC;
@@ -124,8 +127,11 @@ function update() {
     if (dx !== 0 && dy !== 0) { dx *= 0.71; dy *= 0.71; }
 
     if (dx !== 0 || dy !== 0) {
+        // ★追加: 一度でも移動入力があったらフラグを立てる
+        hasPlayerMoved = true;
+
         moveFrameCount++;
-        // ★滑らか重視：10フレームに1回記録（ローカル表示のみなので問題なし）
+        // 軌跡記録 (10フレーム毎)
         if (moveFrameCount % 10 === 0) {
             movementHistory.push({ 
                 x: Math.floor(player.x), 
@@ -164,7 +170,6 @@ function draw() {
     if (!mapImage.complete) return;
     ctx.drawImage(mapImage, gameOffsetX, gameOffsetY, mapImage.width * scaleFactor, mapImage.height * scaleFactor);
 
-    // リザルト画面裏でも軌跡とプレイヤーを描画し続ける
     if (movementHistory.length > 1) {
         ctx.beginPath();
         ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)'; ctx.lineWidth = 3;
@@ -239,11 +244,11 @@ function finishGame() {
     draw();
 
     // 1. 画像データを生成
-    const dataURL = canvas.toDataURL("image/jpeg", 0.8); // 軽量なJPEG
+    const dataURL = canvas.toDataURL("image/jpeg", 0.8);
 
     // 2. 結果画面に画像を表示
     const imgContainer = document.getElementById('result-map-image-container');
-    imgContainer.innerHTML = ""; // クリア
+    imgContainer.innerHTML = "";
     const img = document.createElement('img');
     img.src = dataURL;
     img.alt = "Result Map";
@@ -270,11 +275,26 @@ function finishGame() {
         resultLogBody.appendChild(tr);
     });
 
-    // ヘッダー修正（簡易）
-    const headerRow = document.querySelector('#result-table thead tr');
-    if(headerRow) {
-        headerRow.innerHTML = `<th>シミュ経過</th><th>場所</th><th>イベント</th><th>選択</th><th>結果</th>`;
+    const ths = document.getElementById('result-table').querySelectorAll('th');
+    if(ths.length < 7) {
+       const headerRow = document.querySelector('#result-table thead tr');
+       headerRow.innerHTML = `<th>シミュ経過</th><th>リアル日時</th><th>決断秒数</th><th>場所</th><th>イベント</th><th>選択</th><th>結果</th>`;
     }
+
+    const btnArea = resultScreen.querySelector('.button-area');
+    const oldBtn = document.getElementById('btn-manual-send');
+    if(oldBtn) oldBtn.remove();
+    const manualSendBtn = document.createElement('button');
+    manualSendBtn.id = 'btn-manual-send';
+    manualSendBtn.className = 'dl-btn';
+    manualSendBtn.style.backgroundColor = '#ff9900';
+    manualSendBtn.textContent = '結果をサーバーに再送信';
+    manualSendBtn.onclick = () => { 
+        alert("送信を開始します..."); 
+        sendTrajectoryToGAS(); 
+        setTimeout(()=>sendImageToGAS(), 1000);
+    };
+    btnArea.insertBefore(manualSendBtn, btnArea.firstChild);
 
     resultScreen.style.display = 'flex';
 }
@@ -325,6 +345,9 @@ function parseCSVLine(line) {
 
 // --- イベント制御 ---
 function checkEvents() {
+    // ★追加: プレイヤーが一度も動いていない場合はイベントチェックをしない
+    if (!hasPlayerMoved) return;
+
     if(eventPopup.style.display === 'flex') return;
     for (let i = 0; i < roomData.length; i++) {
         const room = roomData[i];
@@ -370,7 +393,6 @@ function triggerEvent(room, task) {
         choicesDiv.appendChild(btn);
     });
     
-    // ★文言変更
     const holdBtn = document.createElement('button');
     holdBtn.className = 'choice-btn';
     holdBtn.style.backgroundColor = '#777';
@@ -436,7 +458,7 @@ function addLogToScreen(location, event, choice, duration) {
     logSection.prepend(div);
 }
 
-// --- GAS連携 (イベントログのみ) ---
+// --- GAS連携 ---
 function sendToGAS(data) {
     fetch(GAS_URL, {
         method: 'POST',
@@ -445,6 +467,62 @@ function sendToGAS(data) {
         body: JSON.stringify(data),
         keepalive: true
     }).catch(err => console.error(err));
+}
+
+// ★画像送信 (軽量なJPEG形式で送信)
+function sendImageToGAS() {
+    try {
+        var dataURL = canvas.toDataURL("image/jpeg", 0.7);
+        var base64 = dataURL.split("base64,")[1]; 
+
+        const payload = {
+            type: 'image', 
+            playerId: player.id,
+            sessionUUID: sessionUUID,
+            startTime: sessionStartTime,
+            image: base64
+        };
+        
+        console.log("Sending image data...");
+        fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(payload),
+            keepalive: true 
+        }).then(()=>console.log("Image sent")).catch(err => console.error("Image Send Error:", err));
+    } catch (e) {
+        console.error("Canvas is tainted. Cannot export image. (ローカル環境制限):", e);
+    }
+}
+
+function sendTrajectoryToGAS() {
+    if (movementHistory.length === 0) return;
+    let historyToSend = movementHistory;
+    const MAX_POINTS = 3000;
+    if (historyToSend.length > MAX_POINTS) {
+        const step = historyToSend.length / MAX_POINTS;
+        historyToSend = historyToSend.filter((_, index) => index % Math.ceil(step) === 0);
+    }
+    const payload = {
+        type: 'trajectory',
+        playerId: player.id,
+        sessionUUID: sessionUUID,
+        startTime: sessionStartTime,
+        history: historyToSend
+    };
+    const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain' });
+    if (navigator.sendBeacon) {
+        navigator.sendBeacon(GAS_URL, blob);
+    } else {
+        fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(payload),
+            keepalive: true
+        });
+    }
 }
 
 // --- スタートボタン ---
@@ -462,6 +540,8 @@ document.getElementById('btn-start').onclick = () => {
         x:508, y:500, time:0, 
         realTime: new Date().toLocaleString()
     }]; 
+    // ★フラグリセット
+    hasPlayerMoved = false;
 };
 
 // --- 管理者・DL機能 ---
@@ -498,6 +578,19 @@ window.downloadAllLogs = () => {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "event_logs.csv";
+    document.body.appendChild(link);
+    link.click();
+};
+
+window.downloadPathLogs = () => {
+    let csvContent = "PointRealTime,SimTime,X,Y\n" + movementHistory.map(m => 
+        `${m.realTime},${m.time},${m.x},${m.y}`
+    ).join("\n");
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, csvContent], { type: "text/csv" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "path_logs.csv";
     document.body.appendChild(link);
     link.click();
 };
