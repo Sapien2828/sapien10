@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>病院災害対応シミュレーション</title>
+<title>放射線科発災30分間シュミレーション</title>
 <style>
     /* 全体レイアウト：Flexboxで左右分割 */
     body {
@@ -19,78 +19,26 @@
         align-items: center;
     }
 
-    /* メインコンテナ */
-    #main-container {
-        display: flex;
-        width: 100%;
-        height: 100%;
-        max-width: 1600px;
-    }
+    #main-container { display: flex; width: 100%; height: 100%; max-width: 1600px; }
 
-    /* 左側：ゲーム画面（マップ） */
+    /* 左側：ゲーム画面 */
     #game-area {
-        flex: 3;
-        position: relative;
-        background-color: #000;
-        overflow: hidden;
-        border-right: 2px solid #444;
+        flex: 3; position: relative; background-color: #000; overflow: hidden; border-right: 2px solid #444;
     }
-
-    canvas {
-        display: block;
-    }
+    canvas { display: block; }
 
     /* 右側：情報パネル */
     #info-panel {
-        flex: 1;
-        background-color: #222;
-        display: flex;
-        flex-direction: column;
-        padding: 20px;
-        box-sizing: border-box;
-        overflow-y: auto;
+        flex: 1; background-color: #222; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; overflow-y: auto;
     }
-
-    /* --- 情報パネル内の要素 --- */
-    
-    #timer-section {
-        margin-bottom: 30px;
-        text-align: center;
-    }
-    #timer-bar-bg {
-        width: 100%; height: 25px; background: #444;
-        border: 2px solid #fff; border-radius: 5px;
-        position: relative; margin-top: 10px;
-    }
-    #timer-bar-fill {
-        width: 0%; height: 100%; background: #00ff00;
-        transition: width 0.3s, background-color 0.3s;
-    }
-    #timer-text {
-        font-size: 1.2em; font-weight: bold; margin-top: 5px; color: #fff;
-    }
-
-    #status-section {
-        margin-bottom: 20px;
-        padding: 15px;
-        background: #333; border-radius: 8px; border: 1px solid #555;
-    }
-    #status-message {
-        font-size: 1.1em; font-weight: bold; color: yellow; min-height: 1.2em;
-    }
-    #coord-display {
-        font-size: 0.9em; color: #aaa; margin-top: 5px; text-align: right;
-    }
-
-    #log-section {
-        flex-grow: 1;
-        background: #000;
-        border: 1px solid #555;
-        padding: 10px;
-        overflow-y: auto;
-        font-family: monospace;
-        font-size: 0.9em;
-    }
+    #timer-section { margin-bottom: 30px; text-align: center; }
+    #timer-bar-bg { width: 100%; height: 25px; background: #444; border: 2px solid #fff; border-radius: 5px; position: relative; margin-top: 10px; }
+    #timer-bar-fill { width: 0%; height: 100%; background: #00ff00; transition: width 0.3s, background-color 0.3s; }
+    #timer-text { font-size: 1.2em; font-weight: bold; margin-top: 5px; color: #fff; }
+    #status-section { margin-bottom: 20px; padding: 15px; background: #333; border-radius: 8px; border: 1px solid #555; }
+    #status-message { font-size: 1.1em; font-weight: bold; color: yellow; min-height: 1.2em; }
+    #coord-display { font-size: 0.9em; color: #aaa; margin-top: 5px; text-align: right; }
+    #log-section { flex-grow: 1; background: #000; border: 1px solid #555; padding: 10px; overflow-y: auto; font-family: monospace; font-size: 0.9em; }
     .log-item { border-bottom: 1px solid #333; padding: 5px 0; }
     .log-time { color: #888; font-size: 0.8em; }
     .log-event { color: #5bc0de; }
@@ -122,7 +70,6 @@
     .btn-exit { background-color: #555; }
     .btn-retry { background-color: #5cb85c; }
     .btn-finish { background-color: #333; border: 1px solid #777; }
-    /* 画像保存ボタン用 */
     .btn-img-save { background-color: #e67e22; }
 
     /* --- オーバーレイ --- */
@@ -134,7 +81,6 @@
     .popup-content, .login-box {
         background: #333; padding: 25px; border-radius: 10px; 
         max-width: 600px; width: 90%; text-align: center; border: 2px solid #777;
-        /* リザルト画面でスクロールできるようにする */
         max-height: 90vh; overflow-y: auto; 
     }
     .choice-btn {
@@ -151,26 +97,19 @@
     th, td { border: 1px solid #555; padding: 5px; text-align: left; color: white; }
     th { background-color: #444; position: sticky; top: 0; }
 
-    /* リザルト画面 */
     #result-content { max-width: 800px; }
     
-    /* 終了画面 */
     #end-screen {
         display: none; flex-direction: column; align-items: center; justify-content: center;
         width: 100%; height: 100%; background: #000; z-index: 4000; position: absolute; top: 0; left: 0;
     }
 
-    /* 結果画面の画像表示エリア */
+    /* 結果画像の表示エリア */
     #result-map-image-container {
-        margin: 15px 0;
-        border: 2px solid #555;
-        text-align: center;
+        margin: 15px 0; border: 2px solid #555; text-align: center;
     }
     #result-map-image-container img {
-        max-width: 100%;
-        height: auto;
-        display: block;
-        margin: 0 auto;
+        max-width: 100%; height: auto; display: block; margin: 0 auto;
     }
 
 </style>
@@ -181,24 +120,18 @@
         <div id="game-area">
             <canvas id="map-canvas"></canvas>
         </div>
-
         <div id="info-panel">
             <div id="timer-section">
                 <div>災害対応経過時間</div>
-                <div id="timer-bar-bg">
-                    <div id="timer-bar-fill"></div>
-                </div>
+                <div id="timer-bar-bg"><div id="timer-bar-fill"></div></div>
                 <div id="timer-text">0 / 30 分</div>
             </div>
-
             <div id="status-section">
                 <div id="status-message">待機中...</div>
                 <div id="coord-display">X:0 Y:0</div>
             </div>
-
             <div style="font-weight:bold; margin-bottom:5px;">行動ログ</div>
             <div id="log-section"></div>
-            
             <div style="margin-top:20px; text-align:center;">
                  <button class="dl-btn btn-exit" onclick="openAdminLogin()">管理者メニュー</button>
             </div>
@@ -206,7 +139,7 @@
     </div>
 
     <div id="top-screen">
-        <h1 id="top-title">HOSPITAL DISASTER<br>SIMULATION</h1>
+        <h1 id="top-title">放射線科発災30分間<br>シュミレーション</h1>
         <div id="player-input-container">
             <input type="text" id="player-id-input" placeholder="職員ID / 氏名を入力">
         </div>
@@ -226,9 +159,7 @@
         <div class="popup-content" id="result-content">
             <div style="font-size:1.5em; color:#5bc0de; margin-bottom:10px;">訓練終了（制限時間到達）</div>
             <p>30分が経過しました。<br>お疲れ様でした。</p>
-            
             <div id="result-map-image-container"></div>
-
             <div class="table-container">
                 <table id="result-table">
                     <thead><tr><th>時間</th><th>場所</th><th>イベント</th><th>選択</th><th>結果</th></tr></thead>
@@ -270,6 +201,7 @@
             </div>
             <div style="margin-top:20px;">
                 <button class="dl-btn" onclick="downloadAllLogs()">CSV保存</button>
+                <button class="dl-btn btn-path" onclick="downloadPathLogs()">軌跡CSV保存</button>
                 <button class="dl-btn btn-exit" onclick="clearAllLogs()">ログ削除</button>
                 <button class="dl-btn btn-exit" onclick="closeAdminScreen()">戻る</button>
             </div>

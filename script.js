@@ -1,6 +1,6 @@
-// script.js - 開始時イベント抑制・完全版
+// script.js - 完全版（部屋No記録・時間のみ表示追加）
 
-// ★指定された最新のGAS URL
+// ★指定のGAS URL
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx8Oxc4dVAK1v5crQjBGEH6zbpg3m7hZFKxx7tn9ERKfHN4bYyDSY_Y5yXuGf1cEc1L/exec";
 
 // --- 画像・データファイルパス ---
@@ -9,10 +9,10 @@ const COLLISION_SRC = "./map_collision.bmp";
 const CSV_SRC = "./data.csv";
 
 // --- 設定値 ---
-const MAX_TIME_LIMIT = 30; // 制限時間（分）
-const MOVE_FRAMES_PER_MINUTE = 120; // 移動による時間経過
+const MAX_TIME_LIMIT = 30; 
+const MOVE_FRAMES_PER_MINUTE = 120; 
 
-// --- DOM要素の取得 ---
+// --- DOM要素 ---
 const gameArea = document.getElementById('game-area');
 const canvas = document.getElementById('map-canvas');
 const ctx = canvas.getContext('2d');
@@ -31,7 +31,7 @@ const timerText = document.getElementById('timer-text');
 const collisionCanvas = document.createElement('canvas');
 const collisionCtx = collisionCanvas.getContext('2d');
 
-// --- ゲーム状態変数 ---
+// --- ゲーム状態 ---
 let mapImage = new Image();
 let collisionImage = new Image();
 let scaleFactor = 1;
@@ -51,8 +51,6 @@ let moveFrameCount = 0;
 let sessionUUID = "";
 let sessionStartTime = "";
 let eventOpenTime = 0; 
-
-// ★追加: プレイヤーが一度でも動いたかどうかのフラグ
 let hasPlayerMoved = false;
 
 // --- 初期化 ---
@@ -127,18 +125,12 @@ function update() {
     if (dx !== 0 && dy !== 0) { dx *= 0.71; dy *= 0.71; }
 
     if (dx !== 0 || dy !== 0) {
-        // ★追加: 一度でも移動入力があったらフラグを立てる
         hasPlayerMoved = true;
-
         moveFrameCount++;
+        
         // 軌跡記録 (10フレーム毎)
         if (moveFrameCount % 10 === 0) {
-            movementHistory.push({ 
-                x: Math.floor(player.x), 
-                y: Math.floor(player.y), 
-                time: accumulatedTime,
-                realTime: new Date().toLocaleString()
-            });
+            recordTrajectoryPoint();
         }
         if (moveFrameCount >= MOVE_FRAMES_PER_MINUTE) {
             addTime(1); 
@@ -156,6 +148,35 @@ function update() {
     if (!checkCollision(player.x, nextY)) player.y = nextY;
 
     checkEvents();
+}
+
+// 軌跡ポイント記録関数
+function recordTrajectoryPoint() {
+    const now = new Date();
+    // 時間のみ文字列 (HH:mm:ss)
+    const timeOnly = now.toLocaleTimeString('ja-JP', { hour12: false });
+    
+    // 現在地がどの部屋の範囲内か判定
+    let currentRoom = null;
+    for (let i = 0; i < roomData.length; i++) {
+        const room = roomData[i];
+        const dist = Math.hypot(player.x - room.x, player.y - room.y);
+        if (dist < room.radius) {
+            currentRoom = room;
+            break; // 最初に見つかった部屋を採用
+        }
+    }
+
+    movementHistory.push({ 
+        x: Math.floor(player.x), 
+        y: Math.floor(player.y), 
+        time: accumulatedTime,
+        realTime: now.toLocaleString(),
+        timeOnly: timeOnly, // ★追加: 時間のみ
+        no: currentRoom ? currentRoom.csvNo : "", // ★追加: 部屋No
+        manageId: currentRoom ? currentRoom.csvManageId : "", // ★追加: 管理No
+        roomName: currentRoom ? currentRoom.name : "" // ★追加: 部屋名
+    });
 }
 
 function checkCollision(x, y) {
@@ -240,13 +261,8 @@ function finishGame() {
     isGameRunning = false;
     eventPopup.style.display = 'none';
     
-    // ★重要: 最後の状態を確実に描画してから画像化する
-    draw();
-
-    // 1. 画像データを生成
+    draw(); // 最終描画
     const dataURL = canvas.toDataURL("image/jpeg", 0.8);
-
-    // 2. 結果画面に画像を表示
     const imgContainer = document.getElementById('result-map-image-container');
     imgContainer.innerHTML = "";
     const img = document.createElement('img');
@@ -256,7 +272,6 @@ function finishGame() {
     img.style.border = "1px solid white";
     imgContainer.appendChild(img);
 
-    // 3. 画像保存ボタンの動作設定
     const saveImgBtn = document.getElementById('btn-save-image');
     if(saveImgBtn) {
         saveImgBtn.onclick = () => {
@@ -267,19 +282,16 @@ function finishGame() {
         };
     }
 
-    // 4. テーブルログ生成
+    // 画像と軌跡データを送信
+    sendImageToGAS();
+    sendTrajectoryToGAS();
+
     resultLogBody.innerHTML = "";
     logs.forEach(log => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${log.elapsedTime}</td><td>${log.location}</td><td>${log.event}</td><td>${log.choice}</td><td>${log.result}</td>`;
         resultLogBody.appendChild(tr);
     });
-
-    const ths = document.getElementById('result-table').querySelectorAll('th');
-    if(ths.length < 7) {
-       const headerRow = document.querySelector('#result-table thead tr');
-       headerRow.innerHTML = `<th>シミュ経過</th><th>リアル日時</th><th>決断秒数</th><th>場所</th><th>イベント</th><th>選択</th><th>結果</th>`;
-    }
 
     const btnArea = resultScreen.querySelector('.button-area');
     const oldBtn = document.getElementById('btn-manual-send');
@@ -311,7 +323,11 @@ function parseCSV(text) {
     for (let i = 1; i < lines.length; i++) {
         const row = parseCSVLine(lines[i]);
         if(row.length < 5) continue;
-        const roomName = row[2];
+        
+        // CSV読み込み (A:No, B:ManageNo, C:Name, D:X, E:Y...)
+        const csvNo = row[0];        // A列: No
+        const csvManageId = row[1];  // B列: 管理No
+        const roomName = row[2];     // C列: 部屋名
         const x = parseInt(row[3]);
         const y = parseInt(row[4]);
         const r = parseInt(row[5]);
@@ -319,7 +335,12 @@ function parseCSV(text) {
 
         let room = roomData.find(d => d.name === roomName && Math.abs(d.x - x) < 5 && Math.abs(d.y - y) < 5);
         if(!room) {
-            room = { name: roomName, x: x, y: y, radius: r, tasks: [], isDiscovered: false, ignoreUntilExit: false, currentTaskIndex: 0 };
+            room = { 
+                name: roomName, x: x, y: y, radius: r, tasks: [], 
+                isDiscovered: false, ignoreUntilExit: false, currentTaskIndex: 0,
+                csvNo: csvNo,             // ★保持
+                csvManageId: csvManageId  // ★保持
+            };
             roomData.push(room);
         }
         const task = { id: row[0], name: row[7], description: row[8], order: order, choices: [], status: 'pending' };
@@ -345,9 +366,7 @@ function parseCSVLine(line) {
 
 // --- イベント制御 ---
 function checkEvents() {
-    // ★追加: プレイヤーが一度も動いていない場合はイベントチェックをしない
     if (!hasPlayerMoved) return;
-
     if(eventPopup.style.display === 'flex') return;
     for (let i = 0; i < roomData.length; i++) {
         const room = roomData[i];
@@ -439,6 +458,8 @@ function recordLog(room, task, choiceText, resultText) {
         timestamp: now.toLocaleString(),
         elapsedTime: accumulatedTime + "分",
         decisionTime: duration, 
+        roomNo: room.csvNo,           // ★追加
+        roomManageId: room.csvManageId, // ★追加
         location: room.name,
         event: task.name,
         choice: choiceText,
@@ -469,12 +490,10 @@ function sendToGAS(data) {
     }).catch(err => console.error(err));
 }
 
-// ★画像送信 (軽量なJPEG形式で送信)
 function sendImageToGAS() {
     try {
         var dataURL = canvas.toDataURL("image/jpeg", 0.7);
         var base64 = dataURL.split("base64,")[1]; 
-
         const payload = {
             type: 'image', 
             playerId: player.id,
@@ -482,17 +501,15 @@ function sendImageToGAS() {
             startTime: sessionStartTime,
             image: base64
         };
-        
-        console.log("Sending image data...");
         fetch(GAS_URL, {
             method: 'POST',
             mode: 'no-cors',
             headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify(payload),
             keepalive: true 
-        }).then(()=>console.log("Image sent")).catch(err => console.error("Image Send Error:", err));
+        });
     } catch (e) {
-        console.error("Canvas is tainted. Cannot export image. (ローカル環境制限):", e);
+        console.error("Image export failed:", e);
     }
 }
 
@@ -536,11 +553,10 @@ document.getElementById('btn-start').onclick = () => {
     document.getElementById('top-screen').style.display = 'none';
     isGameRunning = true;
     player.x = 508; player.y = 500;
-    movementHistory = [{
-        x:508, y:500, time:0, 
-        realTime: new Date().toLocaleString()
-    }]; 
-    // ★フラグリセット
+    
+    // 初期地点の記録
+    recordTrajectoryPoint();
+    
     hasPlayerMoved = false;
 };
 
@@ -583,8 +599,9 @@ window.downloadAllLogs = () => {
 };
 
 window.downloadPathLogs = () => {
-    let csvContent = "PointRealTime,SimTime,X,Y\n" + movementHistory.map(m => 
-        `${m.realTime},${m.time},${m.x},${m.y}`
+    // CSVヘッダーにも部屋情報を追加
+    let csvContent = "PointRealTime,TimeOnly,SimTime,X,Y,No,管理No,部屋名\n" + movementHistory.map(m => 
+        `${m.realTime},${m.timeOnly},${m.time},${m.x},${m.y},${m.no},${m.manageId},${m.roomName}`
     ).join("\n");
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: "text/csv" });
